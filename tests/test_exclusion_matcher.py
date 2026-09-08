@@ -88,3 +88,34 @@ def test_malformed_board_rows_do_not_raise():
            {"ticker": None, "sources": ["scan:x"], "theme": None, "excluded": False, "last": None}]
     rows = ledger.board_rows(uni, "Momentum", "Bull", "2026-01-05", {("AAA", "Momentum"): {"url": "u1"}})
     assert len(rows) == 1 and rows[0]["Ticker"] == "AAA" and rows[0]["Seen count"] == 1
+
+
+# The exact C1/C2/C4 tokens as the Notion "Exclusion List" page writes them, verbatim.
+# The harness parses that page into exclusion.json, so these are the patterns that run live.
+NOTION_PATTERNS = ["2X", "3X", "Ultra", "Bull", "Bear", "Inverse", "Short", "Daily",
+                   "1.5X", "YieldMax", "Option Income", "Acquisition Corp", "SPAC", "Blank Check"]
+
+
+def test_live_notion_patterns_still_catch_every_c1_example():
+    """The page lists "Ultra" and means the Ultra family. TQQQ (ProShares UltraPro QQQ)
+    leaked once boundary matching landed, because the page has no "UltraPro" entry."""
+    wrappers = [
+        ("LABU", "Direxion Daily S&P Biotech Bull 3X Shares"),
+        ("TQQQ", "ProShares UltraPro QQQ"),
+        ("SOXL", "Direxion Daily Semiconductor Bull 3X Shares"),
+        ("SQQQ", "ProShares UltraPro Short QQQ ETF"),
+        ("BOIL", "ProShares Ultra Bloomberg Natural Gas ETF"),
+        ("NVDY", "YieldMax NVDA Option Income Strategy ETF"),
+        ("DWAC", "Digital World Acquisition Corp"),
+    ]
+    for ticker, name in wrappers:
+        scans = {"s": [{"ticker": ticker, "name": name, "last": 50.0, "rel_volume": 1.0}]}
+        r = {x["ticker"]: x for x in universe.build(scans, {}, [], [], {"patterns": NOTION_PATTERNS})}[ticker]
+        assert r["excluded"], f"{ticker} ({name}) leaked under the live Notion pattern list"
+
+
+def test_live_notion_patterns_do_not_eat_real_companies():
+    for ticker, name in SURVIVORS + [("GPRO", "GoPro Inc"), ("VFF", "Village Farms International")]:
+        scans = {"s": [{"ticker": ticker, "name": name, "last": 50.0, "rel_volume": 1.0}]}
+        r = {x["ticker"]: x for x in universe.build(scans, {}, [], [], {"patterns": NOTION_PATTERNS})}[ticker]
+        assert not r["excluded"], f"{ticker} ({name}) wrongly excluded: {r['exclusion_reason']}"
