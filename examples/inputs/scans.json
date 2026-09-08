@@ -1,0 +1,34 @@
+{
+ "CC Ripper \u2014 5d +20%": [
+  {
+   "ticker": "BE",
+   "name": "Bloom Energy",
+   "last": 282.3,
+   "rel_volume": 1.31
+  },
+  {
+   "ticker": "SMR",
+   "name": "NuScale Power",
+   "last": 11.3,
+   "rel_volume": 1.95
+  },
+  {
+   "ticker": "EOSE",
+   "name": "Eos Energy",
+   "last": 4.45,
+   "rel_volume": 1.56
+  },
+  {
+   "ticker": "BNC",
+   "name": "CEA Industries",
+   "last": 5.13,
+   "rel_volume": 103.3
+  },
+  {
+   "ticker": "LABU",
+   "name": "Direxion Daily S&P Biotech Bull 3X ETF",
+   "last": 300,
+   "rel_volume": 1.2
+  }
+ ]
+}

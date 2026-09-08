@@ -1,0 +1,19 @@
+{
+ "positions": [
+  {
+   "asset_class": "STK",
+   "contract_description": "SPY",
+   "market_value": 4900
+  },
+  {
+   "asset_class": "STK",
+   "contract_description": "TJX",
+   "market_value": -2100
+  },
+  {
+   "asset_class": "STK",
+   "contract_description": "DNN",
+   "market_value": 3800
+  }
+ ]
+}

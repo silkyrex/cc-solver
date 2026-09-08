@@ -1,0 +1,27 @@
+{
+ "BE": {
+  "last": 98.56868400000002,
+  "day_volume": 900000,
+  "avg_volume": 1000000
+ },
+ "SNDK": {
+  "last": 107.213535210701,
+  "day_volume": 500000,
+  "avg_volume": 1000000
+ },
+ "SMR": {
+  "last": 90.18088039366927,
+  "day_volume": 1500000,
+  "avg_volume": 1000000
+ },
+ "EOSE": {
+  "last": 107.18200800000001,
+  "day_volume": 1000000,
+  "avg_volume": 1000000
+ },
+ "CRWV": {
+  "last": 91.31444783999999,
+  "day_volume": 700000,
+  "avg_volume": 1000000
+ }
+}

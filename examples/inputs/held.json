@@ -1,0 +1,14 @@
+[
+ {
+  "ticker": "DNN",
+  "entry": 100.0,
+  "initial_stop": 92.0,
+  "side": "long"
+ },
+ {
+  "ticker": "TJX",
+  "entry": 100.0,
+  "initial_stop": 108.0,
+  "side": "short"
+ }
+]
