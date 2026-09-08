@@ -64,20 +64,23 @@ Also hardened in the same commit: `board_rows` / `grade_board` / `miss_audit` de
 
 The two builds read the same source documents and disagreed. These are desk rulings, not code defects.
 
-| # | Question | `main` | `grok/build-2` | Status |
-|---|---|---|---|---|
-| 1 | Can a same-day scan hit be staged today? | Yes | No — board first | **RULED 2026-09-08: yes, `main` is correct.** The entry door is reclaim day 1/day 2 only, so a one-session lag eats the window the edge lives in. |
-| 2 | Pump exclusion threshold | sub-$10 on >20x RVOL | sub-$3 on >20x | Open |
-| 3 | "Slow sto k(14) d(1)" | SMA(3) of fast %K | raw fast %K, no smoothing | Open |
-| 4 | Who picks the size? | Emits all three tiers, Ray picks | Code picks (A+cluster → 25%) | Open |
-| 5 | Cluster source | Thematic membership as a harness input | Committed `config/themes.json` | Open |
+All five were ruled by Ray on 2026-09-08. **Every ruling went to `main`, which already implements all of them — no code change followed from any of the five.**
 
-`main`'s answers stand by default under "keep main" until ruled otherwise.
+| # | Question | Ruling | Why |
+|---|---|---|---|
+| 1 | Can a same-day scan hit be staged today? | **Yes** (`main`) | The entry door is reclaim day 1 / day 2 only. A one-session lag eats the window the edge lives in. |
+| 2 | Pump exclusion threshold | **sub-$10 on >20x RVOL** (`main`) | The $3–$10 band is where most freak-volume pumps actually sit. The held/roster override protects anything already owned or rostered. |
+| 3 | "Slow sto k(14) d(1)" | **SMA(3) of fast %K** (`main`) | The chart draws the smoothed line; `d(1)` means "no extra D line", not "no smoothing". Raw %K dips under 20 far more often, so build-2 would have armed the second entry door on setups Ray never sees. |
+| 4 | Who picks the size? | **Solver emits all three tiers, Ray picks** (`main`) | "The decision is which size, never whether" means Ray choosing among tiers. Letting code pick converts a judgment call into an unruled rule. |
+| 5 | Cluster source | **Notion Thematic Watchlists, fed in at run time** (`main`) | Themes are edited where every other desk artifact is edited, and are live on the next run. A committed `themes.json` goes stale exactly when a new theme is heating up. |
+
+build-2 lost all five. Combined with the ten defects above, nothing in that branch survives except the two ports listed under "What build-2 does better".
 
 ## Recommended sequence
 
-1. ~~Rule conflict #1~~ — done.
-2. ~~Fix the exclusion matcher on `main`~~ — done.
-3. Rule conflicts #2–#5.
-4. Port `backtest/harness.py` and `persistence.py` into `ccsolver/`.
-5. Retire `grok/build-2` once #4 lands.
+1. ~~Rule conflict #1~~ — done 2026-09-08.
+2. ~~Fix the exclusion matcher on `main`~~ — done, commit 5856920.
+3. ~~Rule conflicts #2–#5~~ — done 2026-09-08, all to `main`, no code change.
+4. Verify the live Notion Exclusion List patterns still fire under the two-token rule.
+5. Port `backtest/harness.py` and `persistence.py` into `ccsolver/`.
+6. Retire `grok/build-2` once #5 lands.
