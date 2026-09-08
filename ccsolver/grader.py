@@ -28,20 +28,23 @@ def forward_returns(bars, from_date, horizons=HORIZONS):
 
 def grade_board(board_rows, bars_by_ticker):
     """board_rows: [{url, Ticker, Layer, first_seen}] → per-row return fills + hit rate by layer (+20d > 0)."""
-    fills, by_layer = [], {}
+    fills, by_layer, skipped = [], {}, []
     for r in board_rows:
+        if not r.get("Ticker") or not r.get("first_seen"):
+            skipped.append(r.get("url") or r.get("Ticker") or "<unidentifiable row>")
+            continue
         bars = bars_by_ticker.get(r["Ticker"])
         if not bars:
             continue
         rets = forward_returns(bars, r["first_seen"])
-        fills.append({"url": r["url"], **rets})
+        fills.append({"url": r.get("url"), **rets})
         if rets["Ret +20d"] is not None:
-            s = by_layer.setdefault(r["Layer"], {"n": 0, "hits": 0, "sum": 0.0})
+            s = by_layer.setdefault(r.get("Layer") or "Unlabelled", {"n": 0, "hits": 0, "sum": 0.0})
             s["n"] += 1
             s["hits"] += rets["Ret +20d"] > 0
             s["sum"] += rets["Ret +20d"]
     summary = {k: {"n": v["n"], "hit_rate": round(v["hits"] / v["n"], 2), "avg_20d": round(v["sum"] / v["n"], 4)} for k, v in by_layer.items() if v["n"]}
-    return {"fills": fills, "by_layer": summary}
+    return {"fills": fills, "by_layer": summary, "skipped_malformed_rows": skipped}
 
 
 def miss_audit(bars_by_ticker, board_first_seen, as_of_idx=None, window=MISS_WINDOW):
