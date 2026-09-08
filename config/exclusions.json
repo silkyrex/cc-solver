@@ -1,0 +1,25 @@
+{
+  "named": [],
+  "categories": [
+    {
+      "id": "C1",
+      "name": "Leveraged and inverse ETFs",
+      "name_contains": ["2X", "3X", "Ultra", "Bull", "Bear", "Inverse", "Short", "Daily"]
+    },
+    {
+      "id": "C2",
+      "name": "Single-stock wrapper ETFs",
+      "name_contains": ["1.5X", "2X", "YieldMax", "Option Income"]
+    },
+    {
+      "id": "C4",
+      "name": "SPAC shells and blank-check",
+      "name_contains": ["Acquisition Corp", "SPAC", "Blank Check"]
+    }
+  ],
+  "known_levered_tickers": [
+    "TQQQ", "SQQQ", "SOXL", "SOXS", "LABU", "LABD", "SPXL", "SPXS",
+    "TNA", "TZA", "UPRO", "SPXU", "QLD", "QID", "UDOW", "SDOW",
+    "FAS", "FAZ", "TECL", "TECS", "TMF", "TMV", "BOIL", "KOLD"
+  ]
+}

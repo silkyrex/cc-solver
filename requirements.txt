@@ -1,0 +1,2 @@
+# No third-party runtime deps. Tests use stdlib unittest.
+# Do not pip-install anything younger than 14 days if a dep is added later.

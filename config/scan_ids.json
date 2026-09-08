@@ -1,0 +1,16 @@
+{
+  "cc_ripper_5d_plus20": {
+    "scan_id": "55d1f1ee-ad09-42d8-abcf-358deab7aca5",
+    "role": "viewing_sample"
+  },
+  "cc_liquidity_universe": {
+    "scan_id": "dfc2dadc-8626-41df-a9cd-ebc747ac06fd",
+    "role": "viewing_sample"
+  },
+  "cc_discovery_sweep": {
+    "scan_id": "3775feef-309d-482c-b9ee-31ab212ad7ab",
+    "role": "viewing_sample"
+  },
+  "robinhood_row_cap": 399,
+  "roster_watchlist_id": "f503b283-f19e-4cea-85a2-15939486dee3"
+}

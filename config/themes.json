@@ -1,0 +1,11 @@
+{
+  "AI Power": ["VST", "CEG", "TLN", "NRG", "OKLO", "SMR", "LEU", "CCJ", "GEV", "VRT", "ETN", "PWR", "MOD", "BE"],
+  "Memory HBM": ["MU", "SNDK", "SKHY", "WDC", "STX", "DRAM", "LRCX", "AMAT"],
+  "Space": ["RKLB", "ASTS", "PL", "LUNR", "RDW", "KTOS", "UFO"],
+  "Defense": ["LMT", "RTX", "NOC", "GD", "LHX", "HII", "AVAV", "KTOS", "ITA"],
+  "Semicap Optics": ["ASML", "LRCX", "AMAT", "KLAC", "MKSI", "COHU", "LITE", "COHR", "VIAV", "FN", "AAOI", "AMD", "MRVL"],
+  "Crypto Miners HPC": ["RIOT", "CIFR", "HUT", "IREN", "BTDR", "WULF", "CLSK", "MARA", "CORZ", "APLD"],
+  "Neoclouds": ["CRWV", "NBIS", "IREN", "APLD", "WULF"],
+  "Energy": ["XOM", "CVX", "COP", "EOG", "PSX", "VLO", "MPC", "SLB"],
+  "Biotech": ["XBI", "ALNY", "SMMT", "BIAF"]
+}

@@ -1,0 +1,10 @@
+# Byte pulls and secrets stay local. Code stays in git.
+data/live/
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+.env
+.env.*
+*.egg-info/
+.DS_Store
