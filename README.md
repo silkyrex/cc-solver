@@ -1,6 +1,6 @@
 # cc-solver
 
-Deterministic rules-as-code for Ray's Consistency Capital desk. Build 2 of the Scan Fleet Restructure v2 (Sep 2026).
+Deterministic rules-as-code for Ray's Consistency Capital desk. Repo: https://github.com/silkyrex/cc-solver Build 2 of the Scan Fleet Restructure v2 (Sep 2026).
 Written by: Claude (Fable 5.1), 2026-09-08. Spec: Notion Desk Post "2026-09-08 Claude Open Build 2 handoff — solver repo spec for Grok". Rulings: Notion plan page "Scan Fleet Restructure v2 — plan (2026-09-08)".
 
 ## The one design decision
@@ -45,12 +45,12 @@ See the docstring at the top of `ccsolver/cli.py`. Bars are settled daily bars f
 - Exit door UNRESOLVED: both the 4 EMA door (day-1 discretion, day-2 mandatory) and the 21 EMA door (2nd consecutive close) are reported. Ray rules until the backtest settles it.
 - Sizing 15% floor / 20% / 25%; the decision is which size, never whether. Stop max(8%, 2×ATR14) from CURRENT price; breakeven at +1R.
 - Exposure 150/130 ex-SPY; breach = banner, still stage at the floor with "say PASS to cancel".
-- Take-action inputs = roster ∪ Discovery Board (63 sessions) ∪ open positions ∪ today's non-excluded scan hits. Shorts alert-only.
+- Take-action inputs = roster ∪ Discovery Board (63 sessions) ∪ open positions ∪ today's non-excluded scan hits (Ray ruled Sep 8: same-day hits may stage). Shorts alert-only.
 - Roster and held names are never excluded from monitoring, only from staging.
 
 ## Known gaps (honest list)
 
-1. `slow_stoch_k` on the live provisional bar uses last_price for high and low (intraday H/L unknown). Slightly understates %K on strong up days. Pass intraday H/L in quotes.json to fix.
+1. Provisional bar takes `day_high`/`day_low` from quotes.json (Ray, Sep 8). If the harness omits them, high = low = last price and slow sto reads slightly low on strong up days.
 2. `window_start` approximates 63 sessions as 91 calendar days.
 3. `grader.miss_audit` classifies nothing; it lists. The LLM classifies, Ray rules.
 4. No backtest harness yet beyond `doors.exit_state` over any bar list; Build 4 wraps it.

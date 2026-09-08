@@ -16,12 +16,14 @@ STO_LOW = 20.0
 STO_LOOKBACK = 10  # sessions in which the sub-20 dip must have happened
 
 
-def _with_live(bars, last_price):
+def _with_live(bars, last_price, day_high=None, day_low=None):
+    """Provisional bar for today. Ray ruled Sep 8 2026: the harness passes intraday high/low in quotes.json."""
     if last_price is None:
         return bars
-    # provisional bar for today: intraday high/low unknown, so both = last_price (conservative for stoch)
     lp = float(last_price)
-    return bars + [{"date": "live", "open": lp, "high": lp, "low": lp, "close": lp, "volume": 0}]
+    hi = max(float(day_high), lp) if day_high is not None else lp
+    lo = min(float(day_low), lp) if day_low is not None else lp
+    return bars + [{"date": "live", "open": lp, "high": hi, "low": lo, "close": lp, "volume": 0}]
 
 
 def _streak(closes, ref, above=True):
@@ -37,8 +39,8 @@ def _streak(closes, ref, above=True):
     return n
 
 
-def entry_state(bars, last_price=None):
-    b = _with_live(bars, last_price)
+def entry_state(bars, last_price=None, day_high=None, day_low=None):
+    b = _with_live(bars, last_price, day_high, day_low)
     closes = [x["close"] for x in b]
     e4 = ema(closes, 4)
     e21 = ema(closes, 21)

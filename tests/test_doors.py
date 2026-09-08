@@ -58,3 +58,12 @@ def test_stop_and_size():
 def test_breakeven_1r():
     assert doors.breakeven_1r(100, 92, 108)
     assert not doors.breakeven_1r(100, 92, 107)
+
+
+def test_intraday_high_low_feeds_stoch():
+    b = flat_then([-0.02] * 8)
+    lp = b[-1]["close"] * 1.06
+    no_hl = doors.entry_state(b, last_price=lp)
+    with_hl = doors.entry_state(b, last_price=lp, day_high=105.0, day_low=lp * 0.95)  # day high above the 14-bar high moves the window
+    assert with_hl["sto_k"] != no_hl["sto_k"]  # intraday range changes the stochastic window
+    assert with_hl["door_open"] and with_hl["reclaim_day"] == 1

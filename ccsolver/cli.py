@@ -3,7 +3,7 @@
 Input files the harness writes (all optional unless noted):
   calendar.json   {"closed": [...], "early": [...]}                       (all tasks)
   bars.json       {"TICKER": [{date,open,high,low,close,volume}...]}     (take_action, confirm_pass, position_monitor, eow, miss_audit)
-  quotes.json     {"TICKER": {"last": 12.3, "day_volume": 1e6, "avg_volume": 8e5}}  (take_action, confirm_pass, fast_discovery)
+  quotes.json     {"TICKER": {"last": 12.3, "day_high": 12.6, "day_low": 11.9, "day_volume": 1e6, "avg_volume": 8e5}}  (take_action, confirm_pass, fast_discovery)
   scans.json      {"scan name": [rows]}                                   (fast_discovery, take_action)
   thematic.json   {"Theme": ["T1","T2"]}
   roster.json     ["SNDK", ...]
@@ -68,7 +68,7 @@ def take_action(d, date):
         if not b:
             verdicts.append({"ticker": t, "verdict": "NO DATA", "reason": "no bars in bars.json"})
             continue
-        es = doors.entry_state(b, q.get("last"))
+        es = doors.entry_state(b, q.get("last"), q.get("day_high"), q.get("day_low"))
         if "price" not in es:
             verdicts.append({"ticker": t, "verdict": "NO DATA", "reason": es["reason"]})
             continue
@@ -99,7 +99,8 @@ def confirm_pass(d, date):
     flips = []
     for s in staged:
         t = s["ticker"]
-        es = doors.entry_state(bars.get(t, []), quotes.get(t, {}).get("last"))
+        q = quotes.get(t, {})
+        es = doors.entry_state(bars.get(t, []), q.get("last"), q.get("day_high"), q.get("day_low"))
         if "price" in es and not es["above_4ema"]:
             flips.append({"ticker": t, "price": es["price"], "ema4": es["ema4"], "note": "flipped below 4 EMA since staging — cancel or size down, your call"})
     return {"task": "confirm_pass", "date": date, "checked": len(staged), "flips": flips, "push": bool(flips)}
