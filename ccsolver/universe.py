@@ -9,13 +9,41 @@ inputs:
 """
 import re
 
-DEFAULT_PATTERNS = ["2X", "3X", "1.5X", "Ultra", "UltraPro", " Bull", " Bear", "Inverse", "Daily ", "YieldMax", "Option Income", "Acquisition Corp", "SPAC", "Blank Check"]
+# Leverage / wrapper vocabulary. Matched on WORD BOUNDARIES only. The old test was an
+# unanchored substring search, which excluded real momentum names before they ever
+# reached a door check: RARE (Ultragenyx -> "Ultra"), ROLL (RBC Bearings -> "Bear"),
+# DJCO (Daily Journal -> "Daily").
+# Compound forms are enumerated on purpose: boundary matching means "Ultra" no longer
+# matches inside "UltraShort", so every leverage compound has to be listed explicitly.
+DEFAULT_PATTERNS = ["2X", "3X", "1.5X", "Ultra", "UltraPro", "UltraShort", "UltraProShort", "Short", "Bull", "Bear", "Inverse", "Daily", "YieldMax", "Option Income", "Acquisition Corp", "SPAC", "Blank Check"]
+# A leverage word alone is not enough. The name must ALSO look like a fund or wrapper.
+# "Daily Journal Corp" has the leverage word and no issuer token, so it survives.
+ISSUER_TOKENS = ["ETF", "ETN", "Shares", "Trust", "Fund", "Direxion", "ProShares", "UltraPro", "YieldMax", "Acquisition Corp", "SPAC", "Blank Check"]
 PUMP_PRICE, PUMP_RVOL = 10.0, 20.0  # C3: sub-$10 name on >20x volume = pump, not a theme
+
+
+def _boundary_hit(name, tokens):
+    """True if any token appears in `name` on a word boundary. Case-insensitive.
+
+    \\b will not do: half these tokens start or end with a digit or a dot ("3X", "1.5X"),
+    where \\b sits in the wrong place. Explicit alnum lookaround instead.
+    """
+    for t in tokens:
+        if re.search(r"(?<![A-Za-z0-9])" + re.escape(t) + r"(?![A-Za-z0-9])", name, re.IGNORECASE):
+            return True
+    return False
+
+
+def is_fund_wrapper(name, patterns=None):
+    """C1/C2/C4: leveraged, inverse, or single-stock wrapper. Needs a leverage word AND an issuer token."""
+    if not name:
+        return False
+    return _boundary_hit(name, patterns or DEFAULT_PATTERNS) and _boundary_hit(name, ISSUER_TOKENS)
 
 
 def build(scans, thematic, roster, positions, exclusion=None):
     exclusion = exclusion or {}
-    pats = [p.lower() for p in (exclusion.get("patterns") or DEFAULT_PATTERNS)]
+    pats = exclusion.get("patterns") or DEFAULT_PATTERNS
     named = {t.upper() for t in exclusion.get("names", [])}
     rows = {}
 
@@ -41,10 +69,9 @@ def build(scans, thematic, roster, positions, exclusion=None):
         add(t, "position")
 
     for r in rows.values():
-        nm = (r["name"] or "").lower()
         if r["ticker"] in named:
             r["excluded"], r["exclusion_reason"] = True, "named exclusion"
-        elif any(p in nm for p in pats):
+        elif is_fund_wrapper(r["name"] or "", pats):
             r["excluded"], r["exclusion_reason"] = True, "C1/C2/C4 fund-name pattern"
         elif r["last"] is not None and r["rel_volume"] is not None and r["last"] < PUMP_PRICE and r["rel_volume"] > PUMP_RVOL:
             r["excluded"], r["exclusion_reason"] = True, f"C3 sub-${PUMP_PRICE:.0f} pump (rvol {r['rel_volume']:.0f}x)"

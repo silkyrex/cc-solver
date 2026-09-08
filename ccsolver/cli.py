@@ -46,12 +46,12 @@ def take_action(d, date):
     roster, excl = _load(d, "roster.json", []), _load(d, "exclusion.json", {})
     pos_json = _load(d, "positions.json", {"positions": []})
     positions = pos_json.get("positions", [])
-    held = [p["contract_description"] for p in positions if p.get("asset_class") == "STK"]
+    held = _held(d)
     quotes, bars = _load(d, "quotes.json", {}), _load(d, "bars.json", {})
     board = _load(d, "board.json", [])
     miss = ledger.discovery_missing(_load(d, "run_log_today.json", []))
     since = ledger.window_start(date)
-    board_names = sorted({r["Ticker"] for r in board if r.get("first_seen", "") >= since})
+    board_names = sorted({r["Ticker"] for r in board if r.get("Ticker") and r.get("first_seen", "") >= since})
 
     uni = universe.build(scans, thematic, roster, held, excl)
     # take-action inputs = roster ∪ board (63 sessions) ∪ positions; scans/thematic feed the board, not the door check
@@ -90,7 +90,7 @@ def take_action(d, date):
         "discovery": miss, "exposure": exp, "clusters": universe.clusters(uni),
         "counts": {"candidates": len(candidates), "staged": sum(v["verdict"] == "STAGE" for v in verdicts)},
         "verdicts": verdicts,
-        "board_payloads": ledger.board_rows([r for r in uni if any(s.startswith("scan:") for s in r["sources"])], "Momentum", "Bull", date, {(r["Ticker"], r["Layer"]): r for r in board}),
+        "board_payloads": ledger.board_rows([r for r in uni if any(s.startswith("scan:") for s in r["sources"])], "Momentum", "Bull", date, {(r["Ticker"], r["Layer"]): r for r in board if r.get("Ticker") and r.get("Layer")}),
     }
 
 
@@ -126,9 +126,15 @@ def position_monitor(d, date):
             "push": any(p.get("mandatory_exit_under_4ema_door") or p.get("mandatory_exit_under_21ema_door") for p in out)}
 
 
+def _held(d):
+    """IBKR open STK tickers. Held names are never excluded from monitoring, only from staging."""
+    pos = _load(d, "positions.json", {"positions": []}).get("positions", [])
+    return [p["contract_description"] for p in pos if p.get("asset_class") == "STK"]
+
+
 def fast_discovery(d, date):
     scans, thematic, quotes, acct = _load(d, "scans.json", {}), _load(d, "thematic.json", {}), _load(d, "quotes.json", {}), _load(d, "account.json", {})
-    uni = universe.build(scans, thematic, _load(d, "roster.json", []), [], _load(d, "exclusion.json", {}))
+    uni = universe.build(scans, thematic, _load(d, "roster.json", []), _held(d), _load(d, "exclusion.json", {}))
     mins = rvol.minutes_since_open(acct.get("pt_time", "11:15"))
     buzz = []
     for r in uni:
@@ -139,7 +145,7 @@ def fast_discovery(d, date):
                 buzz.append({"ticker": r["ticker"], "pace_rvol": pr, "theme": r["theme"]})
     buzz.sort(key=lambda x: -x["pace_rvol"])
     board = _load(d, "board.json", [])
-    existing = {(r["Ticker"], r["Layer"]): r for r in board}
+    existing = {(r["Ticker"], r["Layer"]): r for r in board if r.get("Ticker") and r.get("Layer")}
     return {"task": "fast_discovery", "date": date, "minutes_since_open": mins, "universe": len(uni), "excluded": sum(r["excluded"] for r in uni),
             "volume_buzz": buzz, "clusters": universe.clusters(uni),
             "board_payloads": ledger.board_rows([r for r in uni if r["ticker"] in {b["ticker"] for b in buzz}], "Volume buzz", "Bull", date, existing, why_fn=lambda r: f"pace RVOL at {acct.get('pt_time','11:15')} PT")}
@@ -154,7 +160,10 @@ def miss_audit(d, date):
     board, bars = _load(d, "board.json", []), _load(d, "bars.json", {})
     first = {}
     for r in board:
-        first[r["Ticker"]] = min(first.get(r["Ticker"], "9999-99-99"), r["first_seen"])
+        t, fs = r.get("Ticker"), r.get("first_seen")
+        if not t or not fs:
+            continue
+        first[t] = min(first.get(t, "9999-99-99"), fs)
     return {"task": "miss_audit", "date": date, "misses": grader.miss_audit(bars, first)}
 
 

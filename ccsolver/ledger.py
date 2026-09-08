@@ -55,7 +55,7 @@ def board_rows(universe_rows, layer, side, session_date, existing, llm="Solver",
     existing: {(ticker, layer): {"url", "first_seen", "seen_count"}} from today's query of the board (63-session window)."""
     out = []
     for r in universe_rows:
-        if not any(s.startswith("scan:") or s == "thematic" for s in r["sources"]):
+        if not r.get("ticker") or not any(s.startswith("scan:") or s == "thematic" for s in r["sources"]):
             continue
         key = (r["ticker"], layer)
         prev = existing.get(key)
@@ -72,7 +72,7 @@ def board_rows(universe_rows, layer, side, session_date, existing, llm="Solver",
             "LLM": llm,
         }
         if prev:
-            payload.update({"_update_url": prev["url"], "Seen count": prev["seen_count"] + 1})
+            payload.update({"_update_url": prev.get("url"), "Seen count": (prev.get("seen_count") or 0) + 1})
         else:
             payload.update({"date:First seen:start": session_date, "date:First seen:is_datetime": 0, "Seen count": 1, "Price at first seen": r.get("last")})
         out.append(payload)

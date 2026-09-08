@@ -16,7 +16,7 @@ harness: MCP calls → inputs/*.json → python -m ccsolver.cli <task> --inputs 
 | Module | Does | Never does |
 |---|---|---|
 | `calendar.py` | closed / early_close / normal; MOC deadline; chain times (intraday chain shifts −3h on early close, premarket slots stay) | fetch the calendar (harness exports the Notion page) |
-| `universe.py` | union scans + thematic + roster + positions; tag sources and theme; apply the Exclusion List (fund-name patterns, sub-$10 pumps on >20x volume, named list); tandem clusters (3+ names) | treat a Robinhood scan as a universe (399-row cap) |
+| `universe.py` | union scans + thematic + roster + positions; tag sources and theme; apply the Exclusion List (fund-name patterns, sub-$10 pumps on >20x volume, named list); tandem clusters (3+ names) | treat a Robinhood scan as a universe (399-row cap); exclude a name on a leverage word alone, or exclude anything held or rostered |
 | `rvol.py` | pace-adjusted relative volume against a U-shaped intraday curve | use raw dayVolume/avgVolume as buzz (reads 0.5–0.7 at 11:15) |
 | `doors.py` | entry state (4 EMA reclaim day 1/2/3+, slow sto 20 low, new 52w high), BOTH exit doors (4 EMA day1/day2, 21 EMA warn/mandatory), deep break, stop = max(8%, 2×ATR14) from current price, size tiers 15/20/25%, breakeven at +1R | authorize an entry; the LLM stages, Ray decides |
 | `exposure.py` | gross/net ex-SPY vs 150/130, verbatim math from the trigger prompts | change the caps |
@@ -50,6 +50,7 @@ See the docstring at the top of `ccsolver/cli.py`. Bars are settled daily bars f
 
 ## Known gaps (honest list)
 
+0. Fund-name exclusion needs a leverage word (`Bull`, `3X`, `UltraShort`, ...) on a word boundary AND an issuer token (`ETF`, `Shares`, `Direxion`, ...). Bare substrings used to eat RARE (Ultragenyx), ROLL (RBC Bearings) and DJCO (Daily Journal). Compound leverage forms are enumerated explicitly, so a new one (`UltraProShort2X`) needs adding to `DEFAULT_PATTERNS`.
 1. Provisional bar takes `day_high`/`day_low` from quotes.json (Ray, Sep 8). If the harness omits them, high = low = last price and slow sto reads slightly low on strong up days.
 2. `window_start` approximates 63 sessions as 91 calendar days.
 3. `grader.miss_audit` classifies nothing; it lists. The LLM classifies, Ray rules.
