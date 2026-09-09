@@ -41,9 +41,27 @@ def is_fund_wrapper(name, patterns=None):
     return _boundary_hit(name, patterns or DEFAULT_PATTERNS) and _boundary_hit(name, ISSUER_TOKENS)
 
 
+def merge_patterns(custom):
+    """Notion patterns are ADDED to the built-in list, never a replacement.
+
+    The Exclusion List page is a human category description, not a regex spec. It says
+    "Ultra" and means the whole Ultra family. Boundary matching does not, so if the page's
+    list replaced the defaults, "ProShares UltraPro QQQ" (TQQQ) would survive -- the page
+    has no "UltraPro" entry. Union keeps the page editable in plain English and keeps the
+    compound forms covered. Removing a built-in pattern is a code change, by design.
+    """
+    out = list(DEFAULT_PATTERNS)
+    seen = {p.lower() for p in out}
+    for p in custom or []:
+        if p.lower() not in seen:
+            out.append(p)
+            seen.add(p.lower())
+    return out
+
+
 def build(scans, thematic, roster, positions, exclusion=None):
     exclusion = exclusion or {}
-    pats = exclusion.get("patterns") or DEFAULT_PATTERNS
+    pats = merge_patterns(exclusion.get("patterns"))
     named = {t.upper() for t in exclusion.get("names", [])}
     rows = {}
 
