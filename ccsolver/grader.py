@@ -47,16 +47,27 @@ def grade_board(board_rows, bars_by_ticker):
     return {"fills": fills, "by_layer": summary, "skipped_malformed_rows": skipped}
 
 
-def miss_audit(bars_by_ticker, board_first_seen, as_of_idx=None, window=MISS_WINDOW):
-    """Names that moved >= thresholds over `window` sessions with NO board row before the move started.
+MISS_LOOKBACK = 25  # sessions: every 20-session window whose END falls in the last 25 sessions is tested
+
+
+def miss_audit(bars_by_ticker, board_first_seen, as_of_idx=None, window=MISS_WINDOW, lookback=MISS_LOOKBACK):
+    """Names that moved >= thresholds over ANY `window`-session window ending in the last `lookback` sessions,
+    with NO board row before that window started. One row per ticker: the window with the largest |move|.
+    as_of_idx pins a single window end (legacy behaviour); otherwise all window ends in the lookback are scanned.
     board_first_seen: {"TICKER": "YYYY-MM-DD"} earliest first_seen on the board."""
     misses = []
     for t, bars in bars_by_ticker.items():
         if len(bars) <= window:
             continue
-        end = as_of_idx if as_of_idx is not None else len(bars) - 1
-        start = end - window
-        move = bars[end]["close"] / bars[start]["close"] - 1
+        last = len(bars) - 1
+        ends = [as_of_idx] if as_of_idx is not None else range(max(window, last - lookback), last + 1)
+        best = None
+        for end in ends:
+            start = end - window
+            move = bars[end]["close"] / bars[start]["close"] - 1
+            if best is None or abs(move) > abs(best[0]):
+                best = (move, start, end)
+        move, start, end = best
         bucket = max((th for th in MISS_THRESHOLDS if abs(move) >= th), default=None)
         if bucket is None:
             continue
