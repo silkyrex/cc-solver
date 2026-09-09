@@ -219,7 +219,7 @@ def position_monitor(d, date):
         # entry_date still accepted so existing held.json rows keep working.
         ex = doors.exit_state(b, settled_only=True, side=side,
                               last_price=(quotes.get(t) or {}).get("last"),
-                              entry_door_=h.get("entry_door", "21ema"),
+                              entry_door_=h.get("entry_door", "4ema"),
                               entry_date=h.get("entry_datetime") or h.get("entry_date"))
         cur = b[-1]["close"]
         out.append({"ticker": t, **ex,
