@@ -187,3 +187,18 @@ def test_aggregates_split_by_reclaim_day_and_report_a_median_giveback():
     assert by_day["day1"]["trades"] + by_day["day2"]["trades"] == out["aggregates"]["overall"]["trades"]
     for bucket in (out["aggregates"]["overall"], by_day["day1"], by_day["day2"]):
         assert "giveback_median_pct_of_peak" in bucket
+
+
+def test_first_of_both_carries_its_known_defect_in_the_payload():
+    """A door that does not measure what its name says must say so where the numbers are.
+
+    Measured on the Build 4 corpus 2026-09-09: 81% of trades entered below the 21 EMA exit
+    within one session under this door, because exit_state's closes_against_21ema is a
+    whole-history streak rather than a since-entry one. The production 21ema door is not
+    affected -- binding at entry is what handles that case.
+    """
+    b = _series([0.006] * 30 + [-0.012, -0.012] + [0.014] + [0.006] * 10 + [-0.010] * 10)
+    out = harness.replay({"T": b}, b[0]["date"], b[-1]["date"], door=harness.DOOR_FIRST_OF_BOTH)
+    assert out["warnings"] and "does not mean what it says" in out["warnings"][0]
+    for door in (harness.DOOR_21EMA, harness.DOOR_4EMA_DAY2, harness.DOOR_4EMA_FIRST):
+        assert harness.replay({"T": b}, b[0]["date"], b[-1]["date"], door=door)["warnings"] == []

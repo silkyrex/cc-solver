@@ -149,9 +149,29 @@ def door_fires(es, door):
     if door == DOOR_FIRST_OF_BOTH:
         if a4 >= 2:
             return EXIT_DOOR, "4 EMA 2nd consecutive close against the position"
+        # KNOWN DEFECT, measured 2026-09-09 -- see WARN_FIRST_OF_BOTH. a21 is a streak over
+        # the WHOLE history, not since entry, so a position opened below the 21 EMA is
+        # already several closes deep in this test on its first session. It is not fixable
+        # here: exit_state publishes no since-entry 21 EMA count, and inventing one in the
+        # harness would put a second copy of the door logic outside doors.py. The production
+        # 21ema door is unaffected -- binding at entry is what handles exactly this case.
         if a21 is not None and a21 >= 2:
             return EXIT_DOOR, "21 EMA 2nd consecutive close against the position"
     return None
+
+
+WARN_FIRST_OF_BOTH = (
+    "door 'first-of-both' does not mean what it says for a position opened BELOW the 21 EMA. "
+    "Its 21 EMA leg reads closes_against_21ema, which doors.exit_state counts over the whole "
+    "history rather than since entry, so such a position starts already past the test: measured "
+    "on the 2026-09-08 Build 4 corpus, 81% of trades entered below the 21 EMA exited within one "
+    "session, average hold 2.4 sessions against 6.94 for trades entered above it. Read this "
+    "door's aggregates as a lower bound on hold and treat its returns as unusable. The "
+    "production '21ema' door is NOT affected: the door binds at entry (Ray, 2026-09-08) and a "
+    "position born on the wrong side runs on the 4 EMA leash instead, which is the case this "
+    "test gets wrong. Fixing it needs a since-entry 21 EMA count from doors.exit_state, which "
+    "is a change to ccsolver and therefore a Decision Log entry, not a backtest convenience."
+)
 
 
 # ----------------------------------------------------------------------- replay
@@ -395,6 +415,9 @@ def replay(bars_by_ticker, start, end, door=DOOR_21EMA, history_window=0, side=S
             "day1": aggregate([t for t in trades if t["reclaim_day_at_entry"] == 1], "reclaim day 1"),
             "day2": aggregate([t for t in trades if t["reclaim_day_at_entry"] == 2], "reclaim day 2"),
         },
+        # a door that is known not to measure what its name says says so in its own payload,
+        # so a number from it cannot be quoted without the caveat travelling alongside it
+        "warnings": [WARN_FIRST_OF_BOTH] if door == DOOR_FIRST_OF_BOTH else [],
         "refusals": refusals,
         # entries the range had no room to resolve. Counted here, never in `trades`.
         "unresolved_entries": unresolved,
