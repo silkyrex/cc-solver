@@ -1,7 +1,92 @@
 [
  {
   "ticker": "BE",
-  "price": 98.56868400000002,
-  "stop": 0
+  "entry": 98.5687,
+  "initial_stop": 90.6832,
+  "side": "long",
+  "entry_door": "21ema",
+  "entry_datetime": "2026-09-08T11:50:00-07:00",
+  "graduated_date": null,
+  "reclaim_day_at_entry": 1,
+  "entry_trigger": "both",
+  "new_52w_high_at_entry": false,
+  "above_200sma_at_entry": null,
+  "ema4_at_entry": 96.2214,
+  "ema21_at_entry": 98.4992,
+  "atr14_at_entry": 2.7204,
+  "theme_at_entry": "Power",
+  "sizes_recommended_at_entry": {
+   "floor": {
+    "tier": "floor",
+    "pct_equity": 0.15,
+    "shares": 28,
+    "dollars": 2759.92,
+    "stop_price": 90.6832,
+    "loss_at_stop": 220.79
+   },
+   "default": {
+    "tier": "default",
+    "pct_equity": 0.2,
+    "shares": 38,
+    "dollars": 3745.61,
+    "stop_price": 90.6832,
+    "loss_at_stop": 299.65
+   },
+   "best": {
+    "tier": "best",
+    "pct_equity": 0.25,
+    "shares": 47,
+    "dollars": 4632.73,
+    "stop_price": 90.6832,
+    "loss_at_stop": 370.62
+   }
+  },
+  "size_tier_taken": null,
+  "shares_taken": null
+ },
+ {
+  "ticker": "SMR",
+  "entry": 90.1809,
+  "initial_stop": 82.9664,
+  "side": "long",
+  "entry_door": "4ema",
+  "entry_datetime": "2026-09-08T11:50:00-07:00",
+  "graduated_date": null,
+  "reclaim_day_at_entry": 1,
+  "entry_trigger": "both",
+  "new_52w_high_at_entry": false,
+  "above_200sma_at_entry": null,
+  "ema4_at_entry": 88.6983,
+  "ema21_at_entry": 94.4974,
+  "atr14_at_entry": 2.5365,
+  "theme_at_entry": "Power",
+  "sizes_recommended_at_entry": {
+   "floor": {
+    "tier": "floor",
+    "pct_equity": 0.15,
+    "shares": 31,
+    "dollars": 2795.61,
+    "stop_price": 82.9664,
+    "loss_at_stop": 223.65
+   },
+   "default": {
+    "tier": "default",
+    "pct_equity": 0.2,
+    "shares": 41,
+    "dollars": 3697.42,
+    "stop_price": 82.9664,
+    "loss_at_stop": 295.79
+   },
+   "best": {
+    "tier": "best",
+    "pct_equity": 0.25,
+    "shares": 52,
+    "dollars": 4689.41,
+    "stop_price": 82.9664,
+    "loss_at_stop": 375.15
+   }
+  },
+  "size_tier_taken": null,
+  "shares_taken": null
  }
 ]
