@@ -110,60 +110,75 @@ fill matches how this desk actually exits. They are recorded here so a Build 4 f
 harness figure are never compared as though they were the same measurement.
 
 **Both doors that involve the 21 EMA diverge**, and they diverge in opposite directions —
-B holds longer and trades less, C holds shorter and trades more. That is the signature of a
-21 EMA test that behaves differently, not of a corpus or entry difference.
+B holds longer and trades less, C holds shorter and trades more. Those are two different
+causes, one per door, and both are identified below.
 
 ## Why B diverges: the door binds at entry now, and did not then
 
-| day-1 trades, door B | n | share | mean | PF | hold |
+How production splits the day-1 trades, which is what makes the 21 EMA door a different
+animal from the one Build 4 measured:
+
+| day-1 trades, door B, as production runs it | n | share | mean | PF | hold |
 |---|---|---|---|---|---|
 | all | 3957 | 100% | 3.675 | 1.925 | 9.33 |
-| bound `21ema` at entry | 1508 | 38% | **4.420** | 2.005 | 10.86 |
+| bound `21ema` at entry | 1508 | 38% | 4.420 | 2.005 | 10.86 |
 | bound `4ema` at entry | 2449 | 62% | 3.215 | 1.866 | 8.39 |
 | …graduated | 1093 | 28% | 13.670 | 12.917 | 14.79 |
 | …never graduated | 1356 | 34% | −5.212 | 0.098 | 3.22 |
 
 62% of the trades never run on the 21 EMA door at all — they bind to the tight 4 EMA leash
-at entry under the second 2026-09-08 ruling. The 38% that do bind to the 21 EMA average
-**4.420%** against Build 4's **4.409%**.
+at entry under the second 2026-09-08 ruling.
 
-Build 4 ran on 2026-09-08, the same date as the bind-at-entry ruling, so the obvious
-hypothesis was that **it measured the 21 EMA door before binding existed**. That hypothesis
-was tested directly and **it is wrong.** Replaying the same entries with the binding removed:
+(The bound-`21ema` subgroup averaging 4.420 against Build 4's 4.409 is a **coincidence** of
+subgroup composition, not evidence. It was briefly read as evidence and it is not: the
+reproduction below comes from a full replay, not a subgroup.)
+
+Build 4 ran on 2026-09-08, the same date as the bind-at-entry ruling, so the hypothesis was
+that **it measured the 21 EMA door before binding existed.** That hypothesis was tested,
+rejected, and then **re-confirmed** — the rejection was itself wrong, because the rejecting
+run used the deep break and close fills, i.e. the two conventions this document later shows
+Build 4 does not use. Under Build 4's own conventions:
 
 | door B variant, day 1 | n | mean | PF | hold |
 |---|---|---|---|---|
 | Build 4 B (reference) | 4125 | 4.409 | 2.343 | 8.73 |
-| Build 4 literal-streak control (reference) | 4581 | 3.696 | 2.283 | — |
-| bound at entry — production | 3927 | 3.521 | 1.870 | 9.47 |
-| unbound, 21 EMA streak **since entry** | 4323 | 2.999 | 1.863 | 7.75 |
-| unbound, 21 EMA streak over the **whole history** | 4761 | 2.456 | 1.800 | 6.46 |
+| bound at entry, deep break, close fill — **full production** | 3927 (0.952) | 3.521 (0.799) | 1.870 (0.798) | 9.47 (1.085) |
+| bound at entry, no deep break, next-open fill | 3927 (0.952) | 3.832 (0.869) | 1.953 (0.833) | 9.47 (1.085) |
+| unbound (streak since entry), deep break, close fill | 4323 (1.048) | 2.999 (0.680) | 1.863 (0.795) | 7.75 (0.888) |
+| **unbound, no deep break, next-open fill** | **3988 (0.967)** | **4.640 (1.052)** | **2.333 (0.996)** | **8.81 (1.009)** |
 
-Removing the binding makes the door **worse** under either counting (2.999 and 2.456 against
-the production 3.521), not better. The 38%-subgroup mean of 4.420 above is a coincidence of
-subgroup composition and is not evidence of anything.
+The last row is a reproduction: profit factor within 0.4%, hold within 1%, trade count within
+3.3%, mean within 5.2%. **Build 4's door B is the 21 EMA second consecutive close counted
+since entry, with no bind-at-entry, no deep break, and a next-open fill.**
 
-One loose thread worth recording rather than resolving: the since-entry variant is the
-closest reconstruction to Build 4's door B on **shape** — n 4323 against 4125 and hold 7.75
-against 8.73, both nearer than the production door's 3927 / 9.47 — while being furthest from
-it on **return** (2.999 against 4.409). Something about B holds the same trades for about the
-same time and extracts substantially more from them. That is not a door definition; it points
-at the fill convention, the stop, or the entry price. Unresolved.
+The methodological lesson is worth keeping: the first probe rejected the right hypothesis
+because two unrelated conventions were wrong at the same time, and they happened to suppress
+the unbound variant (2.999) below the bound one (3.521). One wrong control inverted the
+conclusion. Nothing was concluded from a single probe after that.
 
-What the numbers do say is narrower and stranger: this harness's production run (3.675)
-lands almost exactly on **Build 4's own literal-streak control** (3.696), not on its headline
-B (4.409). Build 4's door B beats every variant reconstructible from `doors.py` on the same
-bars, and the source of that edge is **not identified**.
+### What this means for the desk
 
-> **Door B is unexplained.** Do not quote 4.409% as this harness's target or as the current
-> door's expectancy until the gap is understood. `trades_B.csv` in
-> `~/Downloads/cc-solver 2/build4/` is what would settle it — a per-trade diff against this
-> harness's rows would locate the difference in one pass.
+With both conventions matched, binding is the only remaining difference, so it can be priced
+cleanly for the first time:
 
-The probe used for this lives outside the repo (scratchpad only); it changes nothing in
-`ccsolver` and nothing in the harness. Note that its "bound" row reads 3.521 against the
-harness's 3.675 because the probe restricts entries to reclaim-day-1 at entry time rather
-than taking every open door and bucketing afterwards.
+| 21 EMA door, like-for-like (no deep break, next-open fill) | mean/trade | PF |
+|---|---|---|
+| unbound — what Build 4 measured | 4.640 | 2.333 |
+| bound at entry — the 2026-09-08 ruling | 3.832 | 1.953 |
+| **cost of binding** | **−0.81%/trade** | −0.38 |
+
+And the number that actually describes the live rule — bound, deep break, close fill — is
+**3.521%/trade at PF 1.870**, against the 4.409% in the Build 4 summary.
+
+> **Build 4's +4.41% does not describe the exit door the desk runs today**, and the gap is
+> now fully accounted for rather than asserted: −0.81 from binding, and the remainder from
+> the deep break and the fill convention.
+
+That is not an argument to unbind. Binding exists because the unbound rule is incoherent for
+a relaunch entry, which is born dozens of closes into its own mandatory exit — and the
+unbound row above cannot express that cost, because a backtest never suffers the incoherence
+a live position does. It is an argument that the Build 4 figure should not be quoted as the
+current door's expectancy. **Ray's call, not the harness's.**
 
 ## Why C diverges: a real defect in this harness
 
