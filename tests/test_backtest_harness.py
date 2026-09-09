@@ -169,3 +169,21 @@ def test_a_history_window_below_the_thin_floor_is_refused():
         assert "MIN_REAL_BARS_21EMA" in str(e)
     else:
         raise AssertionError("a window below the thin floor must be refused, not silently run")
+
+
+def test_aggregates_split_by_reclaim_day_and_report_a_median_giveback():
+    """Build 4 reports day 1 and day 2 separately, and its giveback column is a MEDIAN.
+
+    Pooling day 1 and day 2 answers a question nobody asked -- different trades, different
+    holds -- and comparing a mean giveback against Build 4's median compares two different
+    statistics and then calls the gap a discrepancy.
+    """
+    early = _series([0.01, -0.30, -0.01] + [0.0] * 60)
+    late = _series([0.0] * 40 + [-0.02, -0.02, -0.02, 0.06, 0.01])
+    out = harness.replay({"EARLY": early, "LATE": late},
+                         early[0]["date"], max(early[-1]["date"], late[-1]["date"]))
+    by_day = out["by_reclaim_day"]
+    assert set(by_day) == {"day1", "day2"}
+    assert by_day["day1"]["trades"] + by_day["day2"]["trades"] == out["aggregates"]["overall"]["trades"]
+    for bucket in (out["aggregates"]["overall"], by_day["day1"], by_day["day2"]):
+        assert "giveback_median_pct_of_peak" in bucket

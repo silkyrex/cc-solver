@@ -50,7 +50,7 @@ import json
 import os
 import sys
 from pathlib import Path
-from statistics import mean
+from statistics import mean, median
 
 if __package__ in (None, ""):  # allows `python backtest/harness.py` as well as `-m`
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -303,15 +303,18 @@ def _close_trade(t, series, exit_i, exit_price, reason, detail, graduated=False,
 def aggregate(trades, label):
     """Headline figures for one bucket of trades.
 
-    Two givebacks are reported because "giveback 36.8%" does not say which. `mean` is the
-    average of the per-trade ratios; `pooled` is 1 - (total realized / total peak), which
-    weights by trade size. Naming one "the" giveback would be picking an answer.
+    Three givebacks are reported because a bare "giveback 36.8%" does not say which. `median`
+    is the middle per-trade ratio, and it is the one the 2026-09-08 Build 4 summary reports --
+    its column is literally `giveback_median_pct` -- so it is the one to compare against.
+    `mean` averages the per-trade ratios; `pooled` is 1 - (total realized / total peak), which
+    weights by trade size.
     """
     n = len(trades)
     if n == 0:
         # same keys as a populated bucket: a consumer should never have to branch on shape
         return {"bucket": label, "trades": 0, "mean_return_pct": None, "profit_factor": None,
-                "win_rate_pct": None, "giveback_mean_pct_of_peak": None,
+                "win_rate_pct": None, "giveback_median_pct_of_peak": None,
+                "giveback_mean_pct_of_peak": None,
                 "giveback_pooled_pct_of_peak": None, "mean_r_multiple": None,
                 "gross_win_pct": 0.0, "gross_loss_pct": 0.0,
                 "exit_reasons": {r: 0 for r in (EXIT_DOOR, EXIT_STOP, EXIT_DEEP, EXIT_END)}}
@@ -328,6 +331,8 @@ def aggregate(trades, label):
         # None, not inf: "no losing trade" is not a profit factor, and inf is not JSON.
         "profit_factor": round(gross_win / gross_loss, 4) if gross_loss > 0 else None,
         "win_rate_pct": round(100.0 * sum(1 for r in rets if r > 0) / n, 4),
+        # the statistic Build 4 reports as "giveback"; compare against this one, not the mean
+        "giveback_median_pct_of_peak": round(median(t["giveback_pct_of_peak"] for t in gb), 4) if gb else None,
         "giveback_mean_pct_of_peak": round(mean(t["giveback_pct_of_peak"] for t in gb), 4) if gb else None,
         "giveback_pooled_pct_of_peak": (round(100.0 * (peaks - sum(t["return_pct"] for t in gb)) / peaks, 4)
                                         if peaks > 0 else None),
@@ -382,6 +387,13 @@ def replay(bars_by_ticker, start, end, door=DOOR_21EMA, history_window=0, side=S
             "overall": aggregate(trades, "overall"),
             "first_half": aggregate(first, f"first half ({start}..{mid})"),
             "second_half": aggregate(second, f"second half (after {mid}..{end})"),
+        },
+        # Build 4 (2026-09-08) reports reclaim day 1 and day 2 as SEPARATE populations and never
+        # pools them: they are different trades with different holds, so a pooled mean answers a
+        # question nobody asked. Reported alongside the pooled figure, not instead of it.
+        "by_reclaim_day": {
+            "day1": aggregate([t for t in trades if t["reclaim_day_at_entry"] == 1], "reclaim day 1"),
+            "day2": aggregate([t for t in trades if t["reclaim_day_at_entry"] == 2], "reclaim day 2"),
         },
         "refusals": refusals,
         # entries the range had no room to resolve. Counted here, never in `trades`.
