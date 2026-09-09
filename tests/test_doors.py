@@ -33,17 +33,17 @@ def test_slow_sto_20_low_trigger():
 
 def test_exit_doors_both_flagged():
     up = flat_then([0.01] * 25)  # long run above both EMAs
-    assert doors.exit_state(up)["door_4ema"] == "none"
+    assert doors.exit_state(up, entry_door_="21ema")["door_4ema"] == "none"
     d1 = up + [dict(up[-1], date="x1", close=up[-1]["close"] * 0.97, low=up[-1]["close"] * 0.96)]
-    e1 = doors.exit_state(d1)
+    e1 = doors.exit_state(d1, entry_door_="21ema")
     assert e1["door_4ema"] == "day1" and not e1["mandatory_exit"]
     d2 = d1 + [dict(d1[-1], date="x2", close=d1[-1]["close"] * 0.97, low=d1[-1]["close"] * 0.96)]
-    e2 = doors.exit_state(d2)
+    e2 = doors.exit_state(d2, entry_door_="21ema")
     assert e2["door_4ema"] == "day2" and not e2["mandatory_exit"]  # 21 EMA entry: the 4 EMA never mandates
     # 21 EMA door needs two closes below the 21 EMA; two 3% drops from a slow 1%/day climb are not enough
     assert e2["door_21ema"] in ("none", "day1")
     deep = d2 + [dict(d2[-1], date="x3", close=d2[-1]["close"] * 0.90, low=d2[-1]["close"] * 0.89)]
-    e3 = doors.exit_state(deep)
+    e3 = doors.exit_state(deep, entry_door_="21ema")
     assert e3["deep_break_4ema"] and e3["mandatory_exit"]  # deep break IS mandatory
     assert "deep break" in e3["mandatory_reason"]
 
@@ -73,19 +73,19 @@ def test_intraday_high_low_feeds_stoch():
 def test_exit_doors_short_mirrored():
     # a short in a steady decline is healthy: closes BELOW the EMAs are the good side
     down = flat_then([-0.01] * 25)
-    s = doors.exit_state(down, side="short")
+    s = doors.exit_state(down, side="short", entry_door_="21ema")
     assert s["side"] == "short" and s["door_4ema"] == "none" and s["door_21ema"] == "none" and not s["mandatory_exit"]
     # the same tape read as a LONG is deep in mandatory territory
-    assert doors.exit_state(down, side="long")["mandatory_exit"]
+    assert doors.exit_state(down, side="long", entry_door_="21ema")["mandatory_exit"]
     # two closes above the 4 EMA against a short = day2 on the 4 EMA door (warning), 21 EMA needs more
     u1 = down + [dict(down[-1], date="x1", close=down[-1]["close"] * 1.03, high=down[-1]["close"] * 1.04)]
     u2 = u1 + [dict(u1[-1], date="x2", close=u1[-1]["close"] * 1.03, high=u1[-1]["close"] * 1.04)]
-    e2 = doors.exit_state(u2, side="short")
+    e2 = doors.exit_state(u2, side="short", entry_door_="21ema")
     assert e2["door_4ema"] == "day2" and e2["warning_4ema"]
     assert e2["door_21ema"] in ("none", "day1") and not e2["mandatory_exit"]
     # a violent squeeze = deep break for the short
     sq = u2 + [dict(u2[-1], date="x3", close=u2[-1]["close"] * 1.10, high=u2[-1]["close"] * 1.11)]
-    assert doors.exit_state(sq, side="short")["deep_break_4ema"]
+    assert doors.exit_state(sq, side="short", entry_door_="21ema")["deep_break_4ema"]
 
 
 def test_breakeven_and_stop_short():
@@ -100,7 +100,7 @@ def test_mandatory_is_21ema_not_4ema():
     up = flat_then([0.01] * 25)
     d1 = up + [dict(up[-1], date="x1", close=up[-1]["close"] * 0.97, low=up[-1]["close"] * 0.96)]
     d2 = d1 + [dict(d1[-1], date="x2", close=d1[-1]["close"] * 0.97, low=d1[-1]["close"] * 0.96)]
-    e2 = doors.exit_state(d2)
+    e2 = doors.exit_state(d2, entry_door_="21ema")
     # 4 EMA day 2 is a warning, not the exit (Ray ruling 2026-09-08). No field in the payload
     # may claim otherwise -- a self-contradicting payload gets half-believed downstream.
     assert e2["door_4ema"] == "day2" and e2["warning_4ema"]
