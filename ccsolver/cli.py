@@ -14,8 +14,10 @@ Input files the harness writes (all optional unless noted):
   run_log_today.json  [ {Task, Outcome} ... ]                            (take_action)
   board.json      [ {url, Ticker, Layer, first_seen, seen_count} ... ]   (take_action, eow, miss_audit)
   staged.json     [ {ticker, price, stop} ... ]                           (confirm_pass)
-  held.json       [ {ticker, entry, initial_stop, side, entry_door, entry_date} ... ]  (position_monitor)
-                  entry_door/entry_date come from the staged verdict's held_row block
+  held.json       [ {ticker, entry, initial_stop, side, entry_door, entry_datetime, graduated_date} ... ]
+                  copy the staged verdict's held_row block verbatim; entry_date (bare date) still
+                  accepted. quotes.json is OPTIONAL here: supply it and every row also carries a
+                  provisional_* read against the live price, usable before the 12:45 PM MOC deadline
 """
 import argparse
 import json
@@ -32,6 +34,21 @@ def _load(d, name, default=None):
         return default
     with open(p) as f:
         return json.load(f)
+
+
+def _entry_datetime(date, pt_time):
+    """ISO 8601 with the real PT offset, from a session date and a 12- or 24-hour clock time.
+
+    Ray's standing rule (2026-09-08): every date carries a time. The offset is resolved through
+    zoneinfo, so a PDT date gets -07:00 and a PST date -08:00 rather than a hardcoded guess.
+    """
+    from datetime import datetime, time as _time
+    from zoneinfo import ZoneInfo
+    mins = rvol._minutes(pt_time or "11:50 AM")
+    mins = max(0, min(24 * 60 - 1, mins))
+    d0 = datetime.strptime(str(date)[:10], "%Y-%m-%d").date()
+    return datetime.combine(d0, _time(mins // 60, mins % 60),
+                            tzinfo=ZoneInfo("America/Los_Angeles")).isoformat()
 
 
 def _gate(d, date):
@@ -56,6 +73,7 @@ def take_action(d, date):
     board_names = sorted({r["Ticker"] for r in board if r.get("Ticker") and r.get("first_seen", "") >= since})
 
     uni = universe.build(scans, thematic, roster, held, excl)
+    uni_by_ticker = {r["ticker"]: r for r in uni}
     # take-action inputs = roster ∪ board (63 sessions) ∪ positions; scans/thematic feed the board, not the door check
     candidates = set(roster) | set(board_names) | set(held)
     for r in uni:
@@ -81,8 +99,27 @@ def take_action(d, date):
             v["sizes"] = {k: doors.size(net_liq, es["price"], es["stop_pct"], k) for k in doors.SIZE_TIERS} if net_liq else None
             v["callout"] = (f"{t}: {es['reason']} — staged at 15% floor, say PASS to cancel"
                             + (" [exit door: 4 EMA until it clears the 21]" if es.get("entry_door") == "4ema" else ""))
-            v["held_row"] = {"ticker": t, "entry": es["price"], "initial_stop": es["stop_price"],
-                             "side": "long", "entry_door": es.get("entry_door"), "entry_date": date}
+            # held_row is what the harness writes onto held.json. The rule for what belongs here:
+            # store the DECISION, not the DATA. Bars can always be re-pulled, so anything an
+            # indicator recomputes is free later and stays out. What dies if unwritten is why this
+            # trade was taken and on what terms.
+            v["held_row"] = {
+                "ticker": t,
+                "entry": es["price"],
+                "initial_stop": es["stop_price"],
+                "side": "long",
+                "entry_door": es.get("entry_door"),
+                "entry_datetime": _entry_datetime(date, acct.get("pt_time")),
+                "graduated_date": None,            # harness fills this the day it graduates
+                "reclaim_day_at_entry": es.get("reclaim_day"),
+                "entry_trigger": es.get("entry_trigger"),
+                "new_52w_high_at_entry": es.get("new_52w_high"),
+                "above_200sma_at_entry": es.get("above_200sma"),
+                "ema4_at_entry": es.get("ema4"),
+                "ema21_at_entry": es.get("ema21"),
+                "atr14_at_entry": es.get("atr14"),
+                "theme_at_entry": (uni_by_ticker.get(t) or {}).get("theme"),
+            }
         elif t in held:
             v["verdict"] = "HELD"
         else:
@@ -141,6 +178,9 @@ def _position_sides(pos_json):
 def position_monitor(d, date):
     held, bars, acct = _load(d, "held.json", []), _load(d, "bars.json", {}), _load(d, "account.json", {})
     pos_json = _load(d, "positions.json", {"positions": []})
+    # quotes are optional here. When present, every row also carries a provisional_* read against the
+    # live price, so this task is usable BEFORE the 12:45 PM MOC deadline and not only at 1:10 PM.
+    quotes = _load(d, "quotes.json", {})
     sides = _position_sides(pos_json)
     out = []
     for h in held:
@@ -161,8 +201,12 @@ def position_monitor(d, date):
         # entry_door / entry_date come off the held.json row, written when the name was staged.
         # Missing entry_door defaults to the tight 4 EMA door for a position that cannot prove it
         # was ever above the 21 EMA; missing entry_date simply blocks graduation. Both err early.
+        # entry_datetime is the field going forward (Ray, 2026-09-08: every date carries a time);
+        # entry_date still accepted so existing held.json rows keep working.
         ex = doors.exit_state(b, settled_only=True, side=side,
-                              entry_door_=h.get("entry_door", "21ema"), entry_date=h.get("entry_date"))
+                              last_price=(quotes.get(t) or {}).get("last"),
+                              entry_door_=h.get("entry_door", "21ema"),
+                              entry_date=h.get("entry_datetime") or h.get("entry_date"))
         cur = b[-1]["close"]
         out.append({"ticker": t, **ex,
                     "breakeven_1r_reached": doors.breakeven_1r(h["entry"], h["initial_stop"], cur, side=side),
@@ -172,7 +216,8 @@ def position_monitor(d, date):
             "exposure": exposure.exposure(pos_json.get("positions", []), net_liq) if net_liq else None,
             # push budget: the 21 EMA door (or a deep break) is the mandatory exit; the 4 EMA door is a
             # warning. An unresolvable side is also worth a push -- it means a position is unmonitored.
-            "push": any(p.get("mandatory_exit") or p.get("verdict") == "SIDE UNKNOWN" for p in out)}
+            "push": any(p.get("mandatory_exit") or p.get("provisional_mandatory")
+                        or p.get("verdict") == "SIDE UNKNOWN" for p in out)}
 
 
 def _held(d):
