@@ -28,7 +28,7 @@ import os
 import sys
 
 from . import calendar as cal
-from . import doors, exposure, grader, ledger, rvol, universe
+from . import clock, doors, exposure, grader, ledger, rvol, universe
 
 
 def _load(d, name, default=None):
@@ -37,21 +37,6 @@ def _load(d, name, default=None):
         return default
     with open(p) as f:
         return json.load(f)
-
-
-def _entry_datetime(date, pt_time):
-    """ISO 8601 with the real PT offset, from a session date and a 12- or 24-hour clock time.
-
-    Ray's standing rule (2026-09-08): every date carries a time. The offset is resolved through
-    zoneinfo, so a PDT date gets -07:00 and a PST date -08:00 rather than a hardcoded guess.
-    """
-    from datetime import datetime, time as _time
-    from zoneinfo import ZoneInfo
-    mins = rvol._minutes(pt_time or "11:50 AM")
-    mins = max(0, min(24 * 60 - 1, mins))
-    d0 = datetime.strptime(str(date)[:10], "%Y-%m-%d").date()
-    return datetime.combine(d0, _time(mins // 60, mins % 60),
-                            tzinfo=ZoneInfo("America/Los_Angeles")).isoformat()
 
 
 def _gate(d, date):
@@ -112,7 +97,7 @@ def take_action(d, date):
                 "initial_stop": es["stop_price"],
                 "side": "long",
                 "entry_door": es.get("entry_door"),
-                "entry_datetime": _entry_datetime(date, acct.get("pt_time")),
+                "entry_datetime": clock.iso(date, acct.get("pt_time") or "11:50 AM"),
                 "graduated_date": None,            # harness fills this the day it graduates
                 "reclaim_day_at_entry": es.get("reclaim_day"),
                 "entry_trigger": es.get("entry_trigger"),
@@ -322,15 +307,40 @@ TASKS = {"take_action": take_action, "confirm_pass": confirm_pass, "position_mon
          "fast_discovery": fast_discovery, "eow": eow, "miss_audit": miss_audit, "calendar": calendar_check}
 
 
+# Tasks that act on live prices. A bad clock here reaches a real order, so these refuse.
+LIVE_TASKS = {"take_action", "confirm_pass", "position_monitor", "fast_discovery"}
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="cc-solver")
     ap.add_argument("task", choices=sorted(TASKS))
     ap.add_argument("--inputs", required=True, help="directory of JSON inputs written by the harness")
     ap.add_argument("--date", required=True, help="YYYY-MM-DD session date (PT)")
+    ap.add_argument("--allow-clock-drift", action="store_true",
+                    help="proceed even when the clock check errors. For deliberate replays only; "
+                         "the refusal exists because a wrong clock silently poisons pace RVOL and "
+                         "every provisional exit read")
     a = ap.parse_args(argv)
-    json.dump(TASKS[a.task](a.inputs, a.date), sys.stdout, indent=1, default=str)
+
+    # THE TIME CHECK. Nothing time-dependent runs above this line.
+    acct = _load(a.inputs, "account.json", {})
+    tc = clock.check(a.date, acct.get("pt_time"), task=a.task)
+    if tc["errors"] and a.task in LIVE_TASKS and not a.allow_clock_drift:
+        json.dump({"task": a.task, "date": a.date, "status": "refused",
+                   "reason": "clock check failed; refusing to compute live-price verdicts on a "
+                             "clock this far off. Fix the input, or pass --allow-clock-drift if "
+                             "this is a deliberate replay.",
+                   "time_check": tc}, sys.stdout, indent=1, default=str)
+        print()
+        return 2
+
+    out = TASKS[a.task](a.inputs, a.date)
+    if isinstance(out, dict):
+        out = {"time_check": tc, **out}
+    json.dump(out, sys.stdout, indent=1, default=str)
     print()
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
