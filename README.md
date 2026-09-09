@@ -27,10 +27,18 @@ harness: MCP calls → inputs/*.json → python -m ccsolver.cli <task> --inputs 
 ## Run
 
 ```
-make test                                                   # 12 tests on synthetic bars
-python -m ccsolver.cli take_action --inputs examples/inputs --date 2026-09-08
-python -m ccsolver.cli calendar    --inputs examples/inputs --date 2026-11-27   # early close: chain shifts, MOC 09:45
+make test                                                   # tests on synthetic bars
+python -m ccsolver.cli take_action --inputs examples/inputs --date 2026-09-08 --allow-clock-drift
+python -m ccsolver.cli calendar    --inputs examples/inputs --date 2026-11-27   # early close: chain shifts, MOC 9:45 AM
 ```
+
+Every task runs a **PT clock check before any time-dependent work** and returns it as `time_check`.
+A live task (`take_action`, `confirm_pass`, `position_monitor`, `fast_discovery`) **refuses** with exit
+code 2 when the check errors: a session date in the future, an unparseable time, or a `pt_time` more
+than two hours from the real Pacific clock. That last one is the real target — 11:50 AM PT is 18:50
+UTC, so a UTC time landing in `pt_time` is 420 minutes off and would otherwise silently poison pace
+RVOL and every provisional exit read. `--allow-clock-drift` is for deliberate replays and for the
+shipped example, whose `pt_time` is pinned to 11:50 AM.
 
 `examples/inputs/` shows every input file with its shape. `examples/take_action.out.json` is a full verdict.
 
