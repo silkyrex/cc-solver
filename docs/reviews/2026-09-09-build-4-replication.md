@@ -77,18 +77,34 @@ B holds longer and trades less, C holds shorter and trades more. That is the sig
 at entry under the second 2026-09-08 ruling. The 38% that do bind to the 21 EMA average
 **4.420%** against Build 4's **4.409%**.
 
-Build 4 ran on 2026-09-08, the same date as the bind-at-entry ruling. The reading that fits
-every number is that **it measured the 21 EMA door before binding existed.** If so the gap
-is a rule change, not a harness defect, and the decision-relevant consequence is:
+Build 4 ran on 2026-09-08, the same date as the bind-at-entry ruling, so the obvious
+hypothesis was that **it measured the 21 EMA door before binding existed**. That hypothesis
+was tested directly and **it is wrong.** Replaying the same entries with the binding removed:
 
-> **Build 4's +4.41% does not describe the exit door the desk runs today.** On the same
-> bars, today's door — bound at entry, one-way graduation — returns **3.675%** per trade at
-> PF 1.925. The binding costs about 0.73%/trade against the unbound door on this sample.
+| door B variant, day 1 | n | mean | PF | hold |
+|---|---|---|---|---|
+| Build 4 B (reference) | 4125 | 4.409 | 2.343 | 8.73 |
+| Build 4 literal-streak control (reference) | 4581 | 3.696 | 2.283 | — |
+| bound at entry — production | 3927 | 3.521 | 1.870 | 9.47 |
+| unbound, 21 EMA streak since entry | 4761 | 2.456 | 1.800 | 6.46 |
 
-That is not an argument to unbind. Binding exists because the unbound rule is incoherent for
-a relaunch entry, which is born dozens of closes into its own mandatory exit. It is an
-argument that the number in the Build 4 summary should not be quoted as the current door's
-expectancy. **Ray's call, not the harness's.**
+Removing the binding makes the door **worse** (2.456), not better. The 38%-subgroup mean of
+4.420 above is a coincidence of subgroup composition and is not evidence of anything.
+
+What the numbers do say is narrower and stranger: this harness's production run (3.675)
+lands almost exactly on **Build 4's own literal-streak control** (3.696), not on its headline
+B (4.409). Build 4's door B beats every variant reconstructible from `doors.py` on the same
+bars, and the source of that edge is **not identified**.
+
+> **Door B is unexplained.** Do not quote 4.409% as this harness's target or as the current
+> door's expectancy until the gap is understood. `trades_B.csv` in
+> `~/Downloads/cc-solver 2/build4/` is what would settle it — a per-trade diff against this
+> harness's rows would locate the difference in one pass.
+
+The probe used for this lives outside the repo (scratchpad only); it changes nothing in
+`ccsolver` and nothing in the harness. Note that its "bound" row reads 3.521 against the
+harness's 3.675 because the probe restricts entries to reclaim-day-1 at entry time rather
+than taking every open door and bucketing afterwards.
 
 ## Why C diverges: a real defect in this harness
 
