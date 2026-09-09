@@ -2,6 +2,8 @@
 
 bars_by_ticker: {"TICKER": [bars...]} settled daily bars, chronological.
 """
+from . import bars as barlib
+
 HORIZONS = (5, 10, 20, 30)
 MISS_THRESHOLDS = (0.10, 0.15, 0.20, 0.30)
 MISS_WINDOW = 20
@@ -33,9 +35,10 @@ def grade_board(board_rows, bars_by_ticker):
         if not r.get("Ticker") or not r.get("first_seen"):
             skipped.append(r.get("url") or r.get("Ticker") or "<unidentifiable row>")
             continue
-        bars = bars_by_ticker.get(r["Ticker"])
+        bars = barlib.clean(bars_by_ticker.get(r["Ticker"]) or [])
         if not bars:
             continue
+        # first_seen can predate the listing; forward_returns then based off a padded close.
         rets = forward_returns(bars, r["first_seen"])
         fills.append({"url": r.get("url"), **rets})
         if rets["Ret +20d"] is not None:
@@ -57,6 +60,9 @@ def miss_audit(bars_by_ticker, board_first_seen, as_of_idx=None, window=MISS_WIN
     board_first_seen: {"TICKER": "YYYY-MM-DD"} earliest first_seen on the board."""
     misses = []
     for t, bars in bars_by_ticker.items():
+        # A padded bar carries the listing-day open, so a window starting on one reports the
+        # gap between a price that never traded and a real one as a move the desk "missed".
+        bars = barlib.clean(bars)
         if len(bars) <= window:
             continue
         last = len(bars) - 1

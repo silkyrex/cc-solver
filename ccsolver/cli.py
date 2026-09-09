@@ -230,8 +230,10 @@ def position_monitor(d, date):
             "exposure": exposure.exposure(pos_json.get("positions", []), net_liq) if net_liq else None,
             # push budget: the 21 EMA door (or a deep break) is the mandatory exit; the 4 EMA door is a
             # warning. An unresolvable side is also worth a push -- it means a position is unmonitored.
+            # thin_history pushes for the same reason SIDE UNKNOWN does: the read did not run.
+            # A held name whose 21 EMA test could not be computed is unmonitored, not fine.
             "push": any(p.get("mandatory_exit") or p.get("provisional_mandatory")
-                        or p.get("verdict") == "SIDE UNKNOWN" for p in out)}
+                        or p.get("thin_history") or p.get("verdict") == "SIDE UNKNOWN" for p in out)}
 
 
 def _held(d):

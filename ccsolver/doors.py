@@ -6,6 +6,7 @@ provisional "today" close is last_price and every indicator is computed with it 
 """
 import math
 
+from . import bars as barlib
 from .indicators import atr, ema, slow_stoch_k
 
 SIZE_TIERS = {"floor": 0.15, "default": 0.20, "best": 0.25}
@@ -44,6 +45,12 @@ def _streak(closes, ref, above=True):
 
 
 def entry_state(bars, last_price=None, day_high=None, day_low=None):
+    # Padding first. Left in, it seeds the 21 EMA on prices that never traded and keeps the
+    # bar count above the 21 the EMA needs, so a three-week-old listing reads like a full
+    # history. entry_door then binds against a fabricated line, in the loose direction.
+    bars = barlib.clean(bars)
+    real = barlib.real_count(bars)
+    is_thin = real < barlib.MIN_REAL_BARS_21EMA
     b = _with_live(bars, last_price, day_high, day_low)
     closes = [x["close"] for x in b]
     e4 = ema(closes, 4)
@@ -82,7 +89,12 @@ def entry_state(bars, last_price=None, day_high=None, day_low=None):
     return {
         "price": round(price, 4),
         "ema4": round(e4[-1], 4),
-        "ema21": round(e21[-1], 4) if e21[-1] else None,
+        # a 21 EMA on fewer than MIN_REAL_BARS_21EMA real sessions is withheld, not guessed.
+        # entry_door then sees ema21=None and binds the TIGHT 4 EMA door, which is the same
+        # rule a held row with no entry_door gets: unproven against the 21 EMA runs on the leash.
+        "ema21": (round(e21[-1], 4) if e21[-1] else None) if not is_thin else None,
+        "real_bars": real,
+        "thin_history": is_thin,
         "above_200sma": (price > s200) if s200 else None,
         "above_4ema": above,
         "streak_above_4ema": streak_above,
@@ -96,11 +108,12 @@ def entry_state(bars, last_price=None, day_high=None, day_low=None):
         "stop_pct": round(stop_pct, 4),
         "stop_price": round(price * (1 - stop_pct), 4),
         "door_open": reclaim_day in (1, 2) or sto_trigger,
-        "entry_door": entry_door(price, e21[-1], side="long"),
+        "entry_door": entry_door(price, None if is_thin else e21[-1], side="long"),
         "entry_trigger": ("both" if reclaim_day in (1, 2) and sto_trigger
                           else "slow_sto" if sto_trigger
                           else "reclaim" if reclaim_day in (1, 2) else None),
-        "reason": _entry_reason(reclaim_day, sto_trigger, new_high),
+        "reason": _entry_reason(reclaim_day, sto_trigger, new_high)
+                  + (f"; THIN HISTORY: {real} real sessions, 21 EMA withheld" if is_thin else ""),
     }
 
 
@@ -170,12 +183,17 @@ def exit_state(bars, *, entry_door_, last_price=None, settled_only=True, side="l
     side="short" mirrors every test: a short is in trouble when price closes ABOVE the EMAs.
     """
     short = str(side).lower().startswith("s")
+    bars = barlib.clean(bars)
+    real = barlib.real_count(bars)
+    is_thin = real < barlib.MIN_REAL_BARS_21EMA
     b = bars if settled_only else _with_live(bars, last_price)
     closes = [x["close"] for x in b]
     e4, e21 = ema(closes, 4), ema(closes, 21)
     # "against" = the adverse side for this position: below the EMA for a long, above it for a short
     against4 = _streak(closes, e4, above=short)
-    against21 = _streak(closes, e21, above=short) if e21[-1] is not None else 0
+    # On a thin history the 21 EMA test cannot run. It must not report 0, which reads as
+    # "no pressure against the door" and is the same silent-zero the padding used to produce.
+    against21 = None if is_thin else (_streak(closes, e21, above=short) if e21[-1] is not None else 0)
     price = closes[-1]
     if e4[-1] is None:
         deep = False
@@ -197,9 +215,14 @@ def exit_state(bars, *, entry_door_, last_price=None, settled_only=True, side="l
     active = "21ema" if (bound == "21ema" or graduated) else "4ema"
 
     against_active = against21 if active == "21ema" else against4
-    mandatory = deep or against_active >= 2
+    # A thin history on the 21 EMA door leaves the mandatory test unrunnable. Deep break still
+    # applies (it is a 4 EMA test), and the row carries thin_history so the task pushes it rather
+    # than printing "holds" off a test that never ran.
+    mandatory = deep or (against_active is not None and against_active >= 2)
     if deep:
         reason = f"deep break: close more than {DEEP_BREAK_PCT:.0%} through the 4 EMA"
+    elif is_thin and active == "21ema":
+        reason = None
     elif mandatory:
         reason = f"{'21' if active == '21ema' else '4'} EMA 2nd consecutive close against the position"
     else:
@@ -207,7 +230,7 @@ def exit_state(bars, *, entry_door_, last_price=None, settled_only=True, side="l
     # door strings are neutral counts on purpose. Whether "day2" means exit depends on active_door,
     # so a name like day2_mandatory or day2_warn would be wrong half the time.
     door4 = {0: "none", 1: "day1"}.get(against4, "day2")
-    door21 = {0: "none", 1: "day1"}.get(against21, "day2")
+    door21 = "unknown" if against21 is None else {0: "none", 1: "day1"}.get(against21, "day2")
     prov = {}
     if settled_only and last_price is not None:
         # Same tests, with today's last price standing in for today's close. Kept in its OWN keys:
@@ -233,6 +256,8 @@ def exit_state(bars, *, entry_door_, last_price=None, settled_only=True, side="l
         # named "against", never "below": for a short these count closes ABOVE the EMA
         "closes_against_4ema": against4,
         "closes_against_21ema": against21,
+        "real_bars": real,
+        "thin_history": is_thin,
         "door_4ema": door4,
         "door_21ema": door21,
         "entry_door": bound,
@@ -245,7 +270,10 @@ def exit_state(bars, *, entry_door_, last_price=None, settled_only=True, side="l
         "note": f"active door = {active} (bound at entry: {bound}"
                 + (", graduated" if graduated else "")
                 + "); deep break is mandatory under either"
-                + (" (short: mirrored, closes ABOVE the EMAs count against)" if short else ""),
+                + (" (short: mirrored, closes ABOVE the EMAs count against)" if short else "")
+                + (f"; THIN HISTORY: {real} real sessions, the 21 EMA test did not run"
+                   if is_thin and active == "21ema" else
+                   f"; thin history ({real} real sessions), 4 EMA door unaffected" if is_thin else ""),
         **prov,
     }
 
