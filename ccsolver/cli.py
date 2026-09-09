@@ -14,13 +14,11 @@ Input files the harness writes (all optional unless noted):
   run_log_today.json  [ {Task, Outcome} ... ]                            (take_action)
   board.json      [ {url, Ticker, Layer, first_seen, seen_count} ... ]   (take_action, eow, miss_audit)
   staged.json     [ <held_row block, verbatim from a take_action STAGE verdict> ... ] (confirm_pass)
-  confirm_pass also reads held.json + positions.json + quotes.json when present, and returns
-  pending_exits: held names whose live price puts them on track to exit at the close. That runs at
-  12:35 PM so it lands BEFORE the 12:45 PM MOC deadline; position_monitor at 1:10 PM confirms.
   held.json       [ {ticker, entry, initial_stop, side, entry_door, entry_datetime, graduated_date} ... ]
-                  copy the staged verdict's held_row block verbatim; entry_date (bare date) still
-                  accepted. quotes.json is OPTIONAL here: supply it and every row also carries a
-                  provisional_* read against the live price, usable before the 12:45 PM MOC deadline
+                  (position_monitor) copy the staged verdict's held_row block verbatim; entry_date
+                  (bare date) still accepted. quotes.json is OPTIONAL here: supply it and every row
+                  also carries a provisional_* read against the live price, usable before the
+                  12:45 PM MOC deadline
 """
 import argparse
 import json
@@ -132,58 +130,36 @@ def take_action(d, date):
 
 
 def confirm_pass(d, date):
-    """12:35 PM slot: staged names that flipped, AND held names on track to exit at the close.
+    """12:25 PM slot: staged names that flipped below the 4 EMA since they were staged.
 
-    The second half exists because of a timing hole. The MOC deadline is 12:45 PM, the close is
-    1:00 PM, and position_monitor runs at 1:10 PM on settled closes -- so a mandatory exit was only
-    knowable 25 minutes after Ray could act on it. This slot is the last point where a provisional
-    read is still actionable, so it is where the provisional read belongs.
+    Held names are deliberately NOT read here. position_monitor runs the same 12:25 PM slot and
+    owns the provisional exit read off the Positions DB (Ray, 2026-09-08). Checking held names in
+    both would push the same name twice in the 20 minutes before the 12:45 PM MOC deadline.
 
-    Nothing here is a confirmed exit. Settled closes decide that, at 1:10 PM.
+    A staged name whose quote or bars are missing is reported in `skipped`, never dropped: an
+    unchecked staged name looks exactly like a clean one in the output otherwise.
     """
     staged, quotes, bars = _load(d, "staged.json", []), _load(d, "quotes.json", {}), _load(d, "bars.json", {})
-    flips = []
+    flips, skipped = [], []
     for s_row in staged:
         t = s_row["ticker"]
-        q = quotes.get(t, {})
-        es = doors.entry_state(bars.get(t, []), q.get("last"), q.get("day_high"), q.get("day_low"))
-        if "price" in es and not es["above_4ema"]:
-            flips.append({"ticker": t, "price": es["price"], "ema4": es["ema4"],
-                          "note": "flipped below 4 EMA since staging — cancel or size down, your call"})
-
-    held = _load(d, "held.json", [])
-    sides = _position_sides(_load(d, "positions.json", {"positions": []}))
-    pending, skipped = [], []
-    for h in held:
-        t = h["ticker"]
-        b = bars.get(t, [])
-        last = (quotes.get(t) or {}).get("last")
-        if not b or last is None:
+        b, q = bars.get(t, []), quotes.get(t) or {}
+        # entry_state raises on an empty bar list, and a name checked without a live quote is
+        # checked against yesterday's close -- neither can be allowed to look like a clean pass.
+        if not b or q.get("last") is None:
             skipped.append({"ticker": t, "reason": "no bars" if not b else "no live quote"})
             continue
-        side = h.get("side") or sides.get(t)
-        if side is None:
-            pending.append({"ticker": t, "verdict": "SIDE UNKNOWN",
-                            "reason": "no side on the held.json row and no signed STK position; "
-                                      "refusing to guess, because the wrong side inverts every door test"})
+        es = doors.entry_state(b, q["last"], q.get("day_high"), q.get("day_low"))
+        if "price" not in es:
+            skipped.append({"ticker": t, "reason": es.get("reason", "no entry state")})
             continue
-        ex = doors.exit_state(b, last_price=last, settled_only=True, side=side,
-                              entry_door_=h.get("entry_door", "21ema"),
-                              entry_date=h.get("entry_datetime") or h.get("entry_date"))
-        if ex.get("provisional_mandatory") or ex.get("mandatory_exit"):
-            pending.append({
-                "ticker": t, "side": ex["side"], "active_door": ex["active_door"],
-                "settled_close": ex["close"], "live_price": ex.get("provisional_close"),
-                "already_confirmed": ex["mandatory_exit"],
-                "reason": ex.get("provisional_reason") or ex.get("mandatory_reason"),
-                "note": ex.get("provisional_note"),
-            })
+        if not es["above_4ema"]:
+            flips.append({"ticker": t, "price": es["price"], "ema4": es["ema4"],
+                          "note": "flipped below 4 EMA since staging — cancel or size down, your call"})
     return {"task": "confirm_pass", "date": date, "checked": len(staged), "flips": flips,
-            "pending_exits": pending, "skipped": skipped,
+            "skipped": skipped,
             "moc_deadline_pt": _gate(d, date).get("moc_deadline_pt"),
-            "note": "pending_exits are PROVISIONAL: computed against the live price so they are "
-                    "actionable before the MOC deadline. Settled closes decide at 1:10 PM.",
-            "push": bool(flips) or bool(pending)}
+            "push": bool(flips)}
 
 
 def _position_sides(pos_json):
