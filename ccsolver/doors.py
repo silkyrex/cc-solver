@@ -67,7 +67,8 @@ def entry_state(bars, last_price=None, day_high=None, day_low=None):
     # reclaim_day: 1 = fresh (yesterday below, today above), 2 = valid day 2, 3+ = stale
     reclaim_day = 0 if not above else min(streak_above, 3)
 
-    # slow sto 20 low: dipped <20 within lookback and today is the FIRST close above 4 EMA since the dip
+    # slow sto 20 low: dipped <20 at any point since the last reclaim, and today is day 1 or day 2
+    # of the first close above the 4 EMA since that dip.
     # ray-4ema / frozen spec v1.4: "Slow Stochastics 14,1" = raw %K(14), no smoothing (smooth=1).
     sk = slow_stoch_k(b, 14, 1)
     dipped_idx = None
