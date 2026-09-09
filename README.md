@@ -24,6 +24,7 @@ harness: MCP calls → inputs/*.json → python -m ccsolver.cli <task> --inputs 
 | `ledger.py` | Run Log / Trader Handoff / Discovery Board payload dicts; `discovery_missing` failure banner; 63-session window | write to Notion |
 | `grader.py` | forward returns at +5/10/20/30d, hit rate by layer, Miss Audit at 10/15/20/30%+ over 20 sessions | edit a rule |
 | `cli.py` | `take_action`, `confirm_pass` (staged flips), `position_monitor`, `fast_discovery`, `eow`, `miss_audit`, `calendar` | anything not in `--inputs` |
+| `backtest/harness.py` | replay the doors forward over a bars directory and a date range; per-trade rows and aggregates, split into two halves; `--door` compares alternative exit doors on ONE entry set | live in `ccsolver/`, call a broker or Notion, or change a rule to make a number come out; move a stop on profit (DEC-006) |
 
 ## Run
 
@@ -31,7 +32,13 @@ harness: MCP calls → inputs/*.json → python -m ccsolver.cli <task> --inputs 
 make test                                                   # tests on synthetic bars
 python -m ccsolver.cli take_action --inputs examples/inputs --date 2026-09-08 --allow-clock-drift
 python -m ccsolver.cli calendar    --inputs examples/inputs --date 2026-11-27   # early close: chain shifts, MOC 9:45 AM
+
+# backtest: one JSON file per ticker in --bars-dir, named TICKER.json
+python -m backtest.harness --bars-dir data/bars --tickers-file universe.json \
+    --start 2024-08-01 --end 2026-09-04 --door 21ema
 ```
+
+The harness is **not** in `ccsolver/`, deliberately: nothing in the live decision path imports it, and it may not change a rule it is measuring. It replays `doors.entry_state` and `doors.exit_state` exactly as the desk runs them — the exit door binds at entry and graduates one-way off settled closes — and the alternative doors behind `--door` are tests over the counts `exit_state` already publishes, never a second copy of the streak logic. Bars are `bars.clean()`ed once at load and no entry is taken while the real history is under `MIN_REAL_BARS_21EMA`; those refusals are reported, not skipped in silence. **It has never been run against a real bar corpus** — see known gap #4.
 
 Every task runs a **PT clock check before any time-dependent work** and returns it as `time_check`.
 A live task (`take_action`, `confirm_pass`, `position_monitor`, `fast_discovery`) **refuses** with exit
@@ -73,7 +80,7 @@ That feed returns one bar per session across the **whole** requested range, trad
 1. Provisional bar takes `day_high`/`day_low` from quotes.json (Ray, Sep 8). If the harness omits them, high = low = last price and slow sto reads slightly low on strong up days.
 2. `window_start` approximates 63 sessions as 91 calendar days.
 3. `grader.miss_audit` classifies nothing; it lists. The LLM classifies, Ray rules.
-4. No backtest harness **in this repo**, and no committed bar corpus. Backtests do get run outside it: DEC-006 rests on two, the second over 2,231 trades with a paired bootstrap. Read that as "the repo cannot reproduce a desk backtest", not "no backtest exists". The exit door no longer waits on one (ruled 2026-09-08); what is still gated is stop 5 vs 8, the day-3 staleness cutoff, and insurance thresholds.
+4. `backtest/harness.py` exists (2026-09-09) but **has never been run on real bars**, and there is still no committed bar corpus. Its per-trade and aggregate numbers are verified only against synthetic fixtures in `tests/test_backtest_harness.py`; treat any figure it prints as unvalidated until someone replays a real corpus through it. It was written against the acceptance target of a "Build 4" run (114 names, 2024-08-01 to 2026-09-04), which the 2026-09-08 review and handoff both record as **not existing in any branch** — that target could not be checked and no number here is tuned toward it. Backtests do get run outside it: DEC-006 rests on two, the second over 2,231 trades with a paired bootstrap. Read that as "the repo cannot reproduce a desk backtest", not "no backtest exists". The exit door no longer waits on one (ruled 2026-09-08); what is still gated is stop 5 vs 8, the day-3 staleness cutoff, and insurance thresholds.
 5. Structure layer (HH/HL pivots) not implemented; the spec deferred it to the slow-discovery LLM task.
 6. ~~Nothing filters interpolated bars.~~ **Handled 2026-09-09** (`bars.py`, Ray approved). Padded bars are stripped from both edges before any door is read, and every verdict now carries `real_bars`. Below **30 real sessions** the 21 EMA read is withheld rather than guessed: `entry_state` returns `ema21: null` and binds the tight `4ema` door, `exit_state` returns `closes_against_21ema: null` and `door_21ema: "unknown"`, and `position_monitor` pushes the row. A deep break still fires, because that is a 4 EMA test. **Residuals:** interior padded bars (a halt) are deliberately kept and counted as not-history, so a name with many interior gaps can read thin while holding a long date range; and 30 is a judgment call, not a derived number — 21 is the bare minimum for any 21 EMA value, and 60 (what the prompts ask for in raw bars) would have refused SKHY at 41 real sessions and SPCX at 59 on the day this shipped.
 7. **`graduated_date` is written and never read.** `held_row` emits it, the Positions DB stores it as "Graduated on", and the position-monitor prompt maps it into `held.json`. `cli.position_monitor` does not pass it to `doors.exit_state`, which recomputes graduation from the bars it was given. A position held longer than the harness's 130-calendar-day bar window therefore loses its graduation and drops back to the tight `4ema` door, against the stated "never demoted" rule. Error direction is an early exit, not a late one.
