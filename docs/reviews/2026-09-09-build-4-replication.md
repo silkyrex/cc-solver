@@ -57,7 +57,57 @@ Door ranking is preserved: B > A > C > A1 in both.
 
 **The two pure 4 EMA doors reproduce.** A's trade count lands within 5 of 5104 and A1's
 average hold within 0.02 sessions of 3.62. Counts that structural do not match by accident
-across 5,000–8,000 trades: the entry rule, the stop, the fills and the 4 EMA door are right.
+across 5,000–8,000 trades: the entry rule, the stop and the 4 EMA door are right.
+
+## Build 4's two conventions, recovered from the numbers
+
+The residual return gap on those two doors is **not** noise and it is not the door. Two
+convention differences account for it, isolated in a 2×2 over both 4 EMA doors. Ratios are
+harness/Build 4; 1.000 is an exact reproduction.
+
+| door A — Build 4 n=5104, mean 2.564, PF 1.694, hold 7.09 | n | mean | PF | hold |
+|---|---|---|---|---|
+| deep break + close fill — *what the harness does* | 0.989 | 0.843 | 0.933 | 0.965 |
+| no deep break + close fill | 0.971 | 0.897 | 0.944 | **1.002** |
+| deep break + next-open fill | 0.989 | 0.947 | 0.977 | 0.965 |
+| **no deep break + next-open fill** | 0.971 | **0.980** | 0.975 | **1.002** |
+
+| door A1 — Build 4 n=7889, mean 1.340, PF 1.517, hold 3.62 | n | mean | PF | hold |
+|---|---|---|---|---|
+| deep break + close fill — *what the harness does* | 0.975 | 0.885 | 0.954 | 0.997 |
+| no deep break + close fill | 0.975 | 0.885 | 0.954 | 0.997 |
+| **next-open fill** (the deep break is a no-op here) | 0.975 | **1.010** | 0.986 | 0.997 |
+
+1. **Build 4's doors do not apply the >4% deep break.** Its door names are plain close tests
+   and they behave like them. Removing the deep break moves door A's average hold from 6.84
+   to 7.10 against Build 4's 7.09 — 0.965 to **1.002**. `doors.py` makes the deep break
+   mandatory under either door (Ray, 2026-09-08), so the harness is right for the live rule
+   and Build 4 measured the door in isolation.
+2. **Build 4 fills an exit at the next session's open.** The harness fills at the signal
+   day's close. Next-open is the more conservative reading of a settled-close signal — you
+   cannot sell into a close you have only just observed. The harness's choice is defensible
+   for *this* desk, which reads provisional exits at 12:25 PT and can act before the 12:45
+   MOC deadline, so a same-day close fill is genuinely reachable live. Both are legitimate;
+   they are not the same experiment.
+
+The two are additive, not double-counted: door A walks 0.843 → 0.897 → 0.980. **Under both
+conventions the harness reproduces Build 4 to within 3% on every metric of both 4 EMA doors.**
+
+The control that makes this trustworthy: door A1 is **bit-identical** with and without the
+deep break — n, mean, PF and hold unchanged to three decimals — because for "first close
+below the 4 EMA" a deep break already *is* a first close below: same bar, same price, only
+the label differs. That was predicted before the run.
+
+Residual `n` of 0.971–0.975 is accounted for by documented, deliberate differences: IOND is
+refused outright (29 real sessions, permanently under `MIN_REAL_BARS_21EMA`; it is the only
+name in the universe with zero trades here, and Build 4 kept it), 32 unresolved end-of-range
+entries are dropped rather than booked at 0.00%, and 22 day-2 trades sit outside the day-1
+bucket.
+
+**Neither convention is adopted into the harness.** Both would change what it measures away
+from the live rule: the deep break is production under Ray's 2026-09-08 ruling, and the close
+fill matches how this desk actually exits. They are recorded here so a Build 4 figure and a
+harness figure are never compared as though they were the same measurement.
 
 **Both doors that involve the 21 EMA diverge**, and they diverge in opposite directions —
 B holds longer and trades less, C holds shorter and trades more. That is the signature of a
