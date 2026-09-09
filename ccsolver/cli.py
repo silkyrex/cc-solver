@@ -217,10 +217,15 @@ def position_monitor(d, date):
         # was ever above the 21 EMA; missing entry_date simply blocks graduation. Both err early.
         # entry_datetime is the field going forward (Ray, 2026-09-08: every date carries a time);
         # entry_date still accepted so existing held.json rows keep working.
+        # graduated_date is the Positions DB "Graduated on" column, which the prompt already maps
+        # into held.json. Read, a graduation stops depending on the graduating close still being
+        # inside the harness's 130-calendar-day bar window; unread, a position held past that window
+        # is demoted to the tight door on a scan that finds nothing, which the rule forbids.
         ex = doors.exit_state(b, settled_only=True, side=side,
                               last_price=(quotes.get(t) or {}).get("last"),
                               entry_door_=h.get("entry_door", "4ema"),
-                              entry_date=h.get("entry_datetime") or h.get("entry_date"))
+                              entry_date=h.get("entry_datetime") or h.get("entry_date"),
+                              graduated_date=h.get("graduated_date"))
         cur = b[-1]["close"]
         out.append({"ticker": t, **ex,
                     "breakeven_1r_reached": doors.breakeven_1r(h["entry"], h["initial_stop"], cur, side=side),
@@ -228,12 +233,22 @@ def position_monitor(d, date):
     net_liq = float(acct.get("net_liq", 0) or 0)
     return {"task": "position_monitor", "date": date, "positions": out,
             "exposure": exposure.exposure(pos_json.get("positions", []), net_liq) if net_liq else None,
+            # Graduations the solver DERIVED this run, for EOD to write into the Positions DB
+            # "Graduated on" column. Deriving one is free only while the graduating close is still
+            # in the bar window; writing it down is what makes the position survive leaving it.
+            # This is an OUTPUT field, so it needs no prompt edit to appear -- but the EOD prompt
+            # has to map it before the write actually happens.
+            "graduated_payloads": [{"ticker": p["ticker"], "Graduated on": p["graduated_date"]}
+                                   for p in out if p.get("graduated_source") == "derived"],
             # push budget: the 21 EMA door (or a deep break) is the mandatory exit; the 4 EMA door is a
             # warning. An unresolvable side is also worth a push -- it means a position is unmonitored.
             # thin_history pushes for the same reason SIDE UNKNOWN does: the read did not run.
             # A held name whose 21 EMA test could not be computed is unmonitored, not fine.
+            # graduated_date_error pushes for the same reason: a refused "Graduated on" value means
+            # the Positions DB row contradicts itself and only Ray can say which half is right.
             "push": any(p.get("mandatory_exit") or p.get("provisional_mandatory")
-                        or p.get("thin_history") or p.get("verdict") == "SIDE UNKNOWN" for p in out)}
+                        or p.get("thin_history") or p.get("graduated_date_error")
+                        or p.get("verdict") == "SIDE UNKNOWN" for p in out)}
 
 
 def _held(d):
