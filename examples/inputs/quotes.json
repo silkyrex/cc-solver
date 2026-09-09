@@ -23,5 +23,19 @@
   "last": 91.31444783999999,
   "day_volume": 700000,
   "avg_volume": 1000000
+ },
+ "DNN": {
+  "last": 114.82,
+  "day_high": 118.38,
+  "day_low": 113.64,
+  "day_volume": 1400000,
+  "avg_volume": 1200000
+ },
+ "TJX": {
+  "last": 99.0,
+  "day_high": 100.5,
+  "day_low": 98.6,
+  "day_volume": 900000,
+  "avg_volume": 1000000
  }
 }

@@ -201,3 +201,63 @@ def test_entry_door_mirrors_for_shorts():
     assert doors.entry_door(110.0, 100.0, side="long") == "21ema"
     assert doors.entry_door(90.0, 100.0, side="short") == "21ema"  # short under the 21 = proven
     assert doors.entry_door(110.0, 100.0, side="short") == "4ema"
+
+
+def test_provisional_flags_the_exit_before_the_moc_deadline():
+    """The timing hole: MOC is 12:45 PM, the close is 1:00 PM, position_monitor runs 1:10 PM.
+
+    A mandatory exit computed on settled closes is only knowable AFTER Ray could act on it.
+    The provisional pass runs the same test against the live price so it is actionable at 12:45.
+    """
+    bars = _relaunch_bars()                       # entered below the 21 EMA -> 4 EMA door
+    entry = bars[-1]["date"]
+    yday = bars + [dict(bars[-1], date="x1", close=bars[-1]["close"] * 0.94)]   # 1 close against
+
+    conf = doors.exit_state(yday, entry_door_="4ema", entry_date=entry)
+    assert conf["active_door"] == "4ema" and conf["closes_against_4ema"] == 1
+    assert not conf["mandatory_exit"]             # day 1: not an exit yet
+
+    # still below at 11:52 AM -> today would be close 2 -> provisional exit, confirmed still false
+    still = doors.exit_state(yday, last_price=yday[-1]["close"] * 0.99,
+                             entry_door_="4ema", entry_date=entry)
+    assert still["mandatory_exit"] is False       # settled closes have not said it
+    assert still["provisional_mandatory"] is True
+    assert "if it closes here" in still["provisional_note"]
+
+    # recovered back over the 4 EMA -> nothing pending
+    back = doors.exit_state(yday, last_price=yday[-1]["close"] * 1.15,
+                            entry_door_="4ema", entry_date=entry)
+    assert not back["mandatory_exit"] and not back["provisional_mandatory"]
+
+
+def test_a_provisional_bar_can_never_graduate_a_position():
+    """An intraday pop over the 21 EMA that fades by the close must not loosen the leash.
+
+    Graduation is one-way, so it may only be driven by a SETTLED close.
+    """
+    bars = _relaunch_bars()
+    entry = bars[-1]["date"]
+    settled = doors.exit_state(bars, entry_door_="4ema", entry_date=entry)
+    assert not settled["graduated"] and settled["active_door"] == "4ema"
+
+    ema21_now = doors.ema([b["close"] for b in bars], 21)[-1]
+    spike = doors.exit_state(bars, last_price=ema21_now * 1.10,   # way above the 21 EMA, intraday
+                             entry_door_="4ema", entry_date=entry)
+    assert not spike["graduated"] and spike["active_door"] == "4ema"
+
+
+def test_graduation_reads_a_full_timestamp_entry_date():
+    """entry_date may arrive as an ISO timestamp now; only the date part is compared."""
+    bars = _relaunch_bars(up_days=14)
+    entry = _relaunch_bars()[-1]["date"]
+    by_date = doors.exit_state(bars, entry_door_="4ema", entry_date=entry)
+    by_ts = doors.exit_state(bars, entry_door_="4ema", entry_date=f"{entry}T11:52:00-07:00")
+    assert by_date["graduated"] and by_ts["graduated"]
+    assert by_date["active_door"] == by_ts["active_door"]
+
+
+def test_entry_trigger_names_which_door_opened():
+    b = flat_then([0.01] * 25)
+    assert doors.entry_state(b)["entry_trigger"] in (None, "reclaim", "slow_sto", "both")
+    bars = _relaunch_bars()
+    assert doors.entry_state(bars)["entry_trigger"] is not None   # this one is a valid entry

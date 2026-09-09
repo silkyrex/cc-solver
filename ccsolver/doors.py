@@ -23,7 +23,11 @@ def _with_live(bars, last_price, day_high=None, day_low=None):
     lp = float(last_price)
     hi = max(float(day_high), lp) if day_high is not None else lp
     lo = min(float(day_low), lp) if day_low is not None else lp
-    return bars + [{"date": "live", "open": lp, "high": hi, "low": lo, "close": lp, "volume": 0}]
+    # provisional=True is load-bearing: this bar may drive a provisional exit flag, but it must never
+    # graduate a position. An intraday pop over the 21 EMA that fades by the close would otherwise
+    # loosen the leash permanently, and graduation is deliberately one-way.
+    return bars + [{"date": "live", "open": lp, "high": hi, "low": lo, "close": lp, "volume": 0,
+                    "provisional": True}]
 
 
 def _streak(closes, ref, above=True):
@@ -93,6 +97,9 @@ def entry_state(bars, last_price=None, day_high=None, day_low=None):
         "stop_price": round(price * (1 - stop_pct), 4),
         "door_open": reclaim_day in (1, 2) or sto_trigger,
         "entry_door": entry_door(price, e21[-1], side="long"),
+        "entry_trigger": ("both" if reclaim_day in (1, 2) and sto_trigger
+                          else "slow_sto" if sto_trigger
+                          else "reclaim" if reclaim_day in (1, 2) else None),
         "reason": _entry_reason(reclaim_day, sto_trigger, new_high),
     }
 
@@ -147,6 +154,12 @@ def exit_state(bars, last_price=None, settled_only=True, side="long", entry_door
 
     entry_date is what makes graduation checkable. Without it graduation cannot be established, and
     the position stays on the TIGHT door -- erring toward the earlier exit, never the later one.
+    It accepts a full timestamp ("2026-09-08T11:52:00-07:00") or a bare date; bars are daily, so only
+    the date part is compared.
+
+    settled_only=False appends today's live bar from last_price and reports the SAME tests against it
+    as provisional_*. That exists because the MOC deadline is 12:45 PM PT and the close is 1:00 PM:
+    a mandatory exit computed on settled closes is only knowable after Ray can act on it.
 
     side="short" mirrors every test: a short is in trouble when price closes ABOVE the EMAs.
     """
@@ -169,7 +182,9 @@ def exit_state(bars, last_price=None, settled_only=True, side="long", entry_door
     graduated = False
     if bound == "4ema" and entry_date is not None:
         for i, bar in enumerate(b):
-            if bar.get("date") is not None and str(bar["date"]) >= str(entry_date):
+            if bar.get("provisional"):
+                continue  # only a SETTLED close can graduate a position
+            if bar.get("date") is not None and str(bar["date"])[:10] >= str(entry_date)[:10]:
                 if _favourable(closes[i], e21[i], short):
                     graduated = True
                     break
@@ -187,6 +202,25 @@ def exit_state(bars, last_price=None, settled_only=True, side="long", entry_door
     # so a name like day2_mandatory or day2_warn would be wrong half the time.
     door4 = {0: "none", 1: "day1"}.get(against4, "day2")
     door21 = {0: "none", 1: "day1"}.get(against21, "day2")
+    prov = {}
+    if settled_only and last_price is not None:
+        # Same tests, with today's last price standing in for today's close. Kept in its OWN keys:
+        # a provisional flag is a warning to act before 12:45 PM, never a confirmed exit.
+        p2 = exit_state(bars, last_price=last_price, settled_only=False, side=side,
+                        entry_door_=entry_door_, entry_date=entry_date)
+        pending = p2["mandatory_exit"] and not mandatory
+        prov = {
+            "provisional_close": p2["close"],
+            "provisional_mandatory": p2["mandatory_exit"],
+            "provisional_reason": p2["mandatory_reason"],
+            "provisional_note": (
+                f"not an exit yet. {p2['mandatory_reason']} if it closes here."
+                if pending else
+                "already a confirmed exit on settled closes" if mandatory else
+                "nothing pending against the active door at this price"
+            ),
+        }
+
     return {
         "side": "short" if short else "long",
         "close": round(price, 4),
@@ -206,6 +240,7 @@ def exit_state(bars, last_price=None, settled_only=True, side="long", entry_door
                 + (", graduated" if graduated else "")
                 + "); deep break is mandatory under either"
                 + (" (short: mirrored, closes ABOVE the EMAs count against)" if short else ""),
+        **prov,
     }
 
 
