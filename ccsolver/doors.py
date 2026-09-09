@@ -154,7 +154,8 @@ def entry_door(price, ema21_val, side="long"):
     return "21ema" if fav else "4ema"
 
 
-def exit_state(bars, *, entry_door_, last_price=None, settled_only=True, side="long", entry_date=None):
+def exit_state(bars, *, entry_door_, last_price=None, settled_only=True, side="long",
+               entry_date=None, graduated_date=None):
     """Exit doors for a LONG or a SHORT, against the door this position bound to at entry.
 
     Ray ruled 2026-09-08 (direct ruling, not a backtest result): the 21 EMA second consecutive close
@@ -171,10 +172,23 @@ def exit_state(bars, *, entry_door_, last_price=None, settled_only=True, side="l
     door means -- position_monitor treats it as the tight 4 EMA door, because a position that cannot
     prove it cleared the 21 EMA has not earned the loose leash.
 
-    entry_date is what makes graduation checkable. Without it graduation cannot be established, and
-    the position stays on the TIGHT door -- erring toward the earlier exit, never the later one.
-    It accepts a full timestamp ("2026-09-08T11:52:00-07:00") or a bare date; bars are daily, so only
-    the date part is compared.
+    entry_date is what makes graduation DERIVABLE from bars. Without it, and without a stored
+    graduated_date, graduation cannot be established and the position stays on the TIGHT door --
+    erring toward the earlier exit, never the later one. It accepts a full timestamp
+    ("2026-09-08T11:52:00-07:00") or a bare date; bars are daily, so only the date part is compared.
+
+    graduated_date is the RECORD of a graduation that already happened -- the Positions DB column
+    "Graduated on", written by EOD the day it happened. Present, it settles the question outright:
+    the position is graduated, no scan runs, and no bar window can demote it. That is the point of
+    reading it. The harness pulls 130 calendar days of bars, so a position held longer than that
+    loses the session it graduated on, the scan finds nothing, and re-derivation demotes it to the
+    tight door against the one-way rule. The error lands as an early forced exit on the
+    longest-held position.
+
+    A DERIVED graduation reports the date it happened in graduated_date too (graduated_source says
+    which of the two it was), so EOD can write it into "Graduated on" and the position stops
+    depending on the bar window from that day forward. A bare graduated=true would leave the same
+    bug live for the next 130 days.
 
     settled_only=False appends today's live bar from last_price and reports the SAME tests against it
     as provisional_*. That exists because the MOC deadline is 12:45 PM PT and the close is 1:00 PM:
@@ -203,14 +217,40 @@ def exit_state(bars, *, entry_door_, last_price=None, settled_only=True, side="l
         deep = price < e4[-1] * (1 - DEEP_BREAK_PCT)
 
     bound = "4ema" if str(entry_door_) == "4ema" else "21ema"
-    graduated = False
-    if bound == "4ema" and entry_date is not None:
+    graduated, grad_date, grad_source, grad_error = False, None, None, None
+    stored = str(graduated_date)[:10] if graduated_date else None
+    settled_through = str(bars[-1]["date"])[:10] if bars and bars[-1].get("date") is not None else None
+    if bound == "21ema":
+        # Graduation is moot on a 21 EMA entry: it was never on the tight leash, so there is nothing
+        # to loosen. A stray "Graduated on" value here is a harmless leftover, not a contradiction --
+        # it cannot move the active door in either direction, so it is ignored rather than flagged.
+        pass
+    elif stored is not None and entry_date is not None and stored < str(entry_date)[:10]:
+        # Malformed: a position cannot graduate before it exists. Not silently trusted and not
+        # silently dropped either -- the stored date is refused, the derivation scan below runs in
+        # its place (which errs tight), and the row carries the reason so the Positions DB row gets
+        # fixed by hand. Same posture as SIDE UNKNOWN: a contradiction in the data is loud.
+        grad_error = (f"graduated_date {stored} is before entry {str(entry_date)[:10]}: refusing to "
+                      "trust it; graduation re-derived from bars instead")
+    elif stored is not None and settled_through is not None and stored > settled_through:
+        # A stored date must name a SETTLED session. A date past the last settled bar is today's
+        # live session (or the future): honouring it would let an intraday pop that fades by the
+        # close graduate the position permanently, which is exactly what provisional=True is skipped
+        # for below. Refused the same way, and re-derived.
+        grad_error = (f"graduated_date {stored} is after the last settled bar {settled_through}: "
+                      "only a settled close may graduate a position; re-derived from bars instead")
+    elif stored is not None:
+        # Believed on its own, with no entry_date required. The stored date is a recorded decision,
+        # not a re-derivation, so it does not need bars to back it up -- which is the whole reason
+        # a window that no longer holds the graduating close cannot demote the position.
+        graduated, grad_date, grad_source = True, stored, "stored"
+    if bound == "4ema" and not graduated and entry_date is not None:
         for i, bar in enumerate(b):
             if bar.get("provisional"):
                 continue  # only a SETTLED close can graduate a position
             if bar.get("date") is not None and str(bar["date"])[:10] >= str(entry_date)[:10]:
                 if _favourable(closes[i], e21[i], short):
-                    graduated = True
+                    graduated, grad_date, grad_source = True, str(bar["date"])[:10], "derived"
                     break
     active = "21ema" if (bound == "21ema" or graduated) else "4ema"
 
@@ -236,7 +276,8 @@ def exit_state(bars, *, entry_door_, last_price=None, settled_only=True, side="l
         # Same tests, with today's last price standing in for today's close. Kept in its OWN keys:
         # a provisional flag is a warning to act before 12:45 PM, never a confirmed exit.
         p2 = exit_state(bars, last_price=last_price, settled_only=False, side=side,
-                        entry_door_=entry_door_, entry_date=entry_date)
+                        entry_door_=entry_door_, entry_date=entry_date,
+                        graduated_date=graduated_date)
         pending = p2["mandatory_exit"] and not mandatory
         prov = {
             "provisional_close": p2["close"],
@@ -262,13 +303,21 @@ def exit_state(bars, *, entry_door_, last_price=None, settled_only=True, side="l
         "door_21ema": door21,
         "entry_door": bound,
         "graduated": graduated,
+        # the DATE, not just the flag: a derived graduation is only worth deriving once. EOD writes
+        # graduated_source == "derived" into the Positions DB "Graduated on" column, and every run
+        # after that reads it back as "stored" instead of re-scanning a window it will outlive.
+        "graduated_date": grad_date,
+        "graduated_source": grad_source,
+        # non-null = the stored date was refused and why. The row is still answered (off the scan),
+        # but a refused date means the Positions DB row is wrong and a human has to fix it.
+        "graduated_date_error": grad_error,
         "active_door": active,
         "deep_break_4ema": deep,
         "warning_4ema": against4 >= 1,
         "mandatory_exit": mandatory,
         "mandatory_reason": reason,
         "note": f"active door = {active} (bound at entry: {bound}"
-                + (", graduated" if graduated else "")
+                + (f", graduated {grad_date} [{grad_source}]" if graduated else "")
                 + "); deep break is mandatory under either"
                 + (" (short: mirrored, closes ABOVE the EMAs count against)" if short else "")
                 + (f"; THIN HISTORY: {real} real sessions, the 21 EMA test did not run"
