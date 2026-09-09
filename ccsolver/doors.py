@@ -14,7 +14,7 @@ STOP_FLOOR_PCT = 0.08
 ATR_MULT = 2.0
 DEEP_BREAK_PCT = 0.04
 STO_LOW = 20.0
-STO_LOOKBACK = 10  # sessions in which the sub-20 dip must have happened
+STO_LOOKBACK = None  # ray-4ema: "No lookback bound -- the arm persists ... until it is consumed". None = whole bar history.
 
 
 def _with_live(bars, last_price, day_high=None, day_low=None):
@@ -68,18 +68,22 @@ def entry_state(bars, last_price=None, day_high=None, day_low=None):
     reclaim_day = 0 if not above else min(streak_above, 3)
 
     # slow sto 20 low: dipped <20 within lookback and today is the FIRST close above 4 EMA since the dip
-    sk = slow_stoch_k(b, 14, 3)
+    # ray-4ema / frozen spec v1.4: "Slow Stochastics 14,1" = raw %K(14), no smoothing (smooth=1).
+    sk = slow_stoch_k(b, 14, 1)
     dipped_idx = None
-    for i in range(len(b) - 1, max(-1, len(b) - 1 - STO_LOOKBACK), -1):
+    lo_bound = -1 if STO_LOOKBACK is None else max(-1, len(b) - 1 - STO_LOOKBACK)
+    for i in range(len(b) - 1, lo_bound, -1):
         if sk[i] is not None and sk[i] < STO_LOW:
             dipped_idx = i
             break
     sto_armed = dipped_idx is not None and not above
     sto_trigger = False
     if dipped_idx is not None and above:
-        # every close between the dip and yesterday was at or below the 4 EMA
-        between = [closes[i] <= e4[i] for i in range(dipped_idx, len(b) - 1) if e4[i] is not None]
-        sto_trigger = all(between) and streak_above == 1
+        # every close between the dip and the bar BEFORE the reclaim day was at or below the 4 EMA;
+        # the dipper keeps its label on FRESH (day 1) and FRESH+1 (day 2), same window as Door 1.
+        end = len(b) - streak_above
+        between = [closes[i] <= e4[i] for i in range(dipped_idx, end) if e4[i] is not None]
+        sto_trigger = all(between) and streak_above in (1, 2)
 
     hi52 = max(x["high"] for x in bars[-252:]) if bars else None
     new_high = hi52 is not None and price >= hi52
