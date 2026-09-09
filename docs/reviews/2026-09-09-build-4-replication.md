@@ -86,10 +86,19 @@ was tested directly and **it is wrong.** Replaying the same entries with the bin
 | Build 4 B (reference) | 4125 | 4.409 | 2.343 | 8.73 |
 | Build 4 literal-streak control (reference) | 4581 | 3.696 | 2.283 | — |
 | bound at entry — production | 3927 | 3.521 | 1.870 | 9.47 |
-| unbound, 21 EMA streak since entry | 4761 | 2.456 | 1.800 | 6.46 |
+| unbound, 21 EMA streak **since entry** | 4323 | 2.999 | 1.863 | 7.75 |
+| unbound, 21 EMA streak over the **whole history** | 4761 | 2.456 | 1.800 | 6.46 |
 
-Removing the binding makes the door **worse** (2.456), not better. The 38%-subgroup mean of
-4.420 above is a coincidence of subgroup composition and is not evidence of anything.
+Removing the binding makes the door **worse** under either counting (2.999 and 2.456 against
+the production 3.521), not better. The 38%-subgroup mean of 4.420 above is a coincidence of
+subgroup composition and is not evidence of anything.
+
+One loose thread worth recording rather than resolving: the since-entry variant is the
+closest reconstruction to Build 4's door B on **shape** — n 4323 against 4125 and hold 7.75
+against 8.73, both nearer than the production door's 3927 / 9.47 — while being furthest from
+it on **return** (2.999 against 4.409). Something about B holds the same trades for about the
+same time and extracts substantially more from them. That is not a door definition; it points
+at the fill convention, the stop, or the entry price. Unresolved.
 
 What the numbers do say is narrower and stranger: this harness's production run (3.675)
 lands almost exactly on **Build 4's own literal-streak control** (3.696), not on its headline
