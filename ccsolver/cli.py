@@ -119,6 +119,13 @@ def take_action(d, date):
                 "ema21_at_entry": es.get("ema21"),
                 "atr14_at_entry": es.get("atr14"),
                 "theme_at_entry": (uni_by_ticker.get(t) or {}).get("theme"),
+                # What the solver RECOMMENDED at entry, and a slot for what Ray actually took.
+                # Ray picks the tier, so the solver can never know it at stage time -- but the
+                # recommendation is a decision the solver made, and it dies if unwritten. Keeping
+                # both is what later answers "did taking the floor instead of best cost me anything".
+                "sizes_recommended_at_entry": v.get("sizes"),
+                "size_tier_taken": None,   # harness fills after Ray picks
+                "shares_taken": None,      # harness fills from the fill
             }
         elif t in held:
             v["verdict"] = "HELD"
