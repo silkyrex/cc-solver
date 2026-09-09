@@ -36,12 +36,12 @@ def test_exit_doors_both_flagged():
     assert doors.exit_state(up)["door_4ema"] == "none"
     d1 = up + [dict(up[-1], date="x1", close=up[-1]["close"] * 0.97, low=up[-1]["close"] * 0.96)]
     e1 = doors.exit_state(d1)
-    assert e1["door_4ema"] == "day1_warn" and not e1["mandatory_exit"]
+    assert e1["door_4ema"] == "day1" and not e1["mandatory_exit"]
     d2 = d1 + [dict(d1[-1], date="x2", close=d1[-1]["close"] * 0.97, low=d1[-1]["close"] * 0.96)]
     e2 = doors.exit_state(d2)
-    assert e2["door_4ema"] == "day2_warn" and not e2["mandatory_exit"]  # 4 EMA never mandates (Ray 2026-09-08)
+    assert e2["door_4ema"] == "day2" and not e2["mandatory_exit"]  # 21 EMA entry: the 4 EMA never mandates
     # 21 EMA door needs two closes below the 21 EMA; two 3% drops from a slow 1%/day climb are not enough
-    assert e2["door_21ema"] in ("none", "warn")
+    assert e2["door_21ema"] in ("none", "day1")
     deep = d2 + [dict(d2[-1], date="x3", close=d2[-1]["close"] * 0.90, low=d2[-1]["close"] * 0.89)]
     e3 = doors.exit_state(deep)
     assert e3["deep_break_4ema"] and e3["mandatory_exit"]  # deep break IS mandatory
@@ -81,8 +81,8 @@ def test_exit_doors_short_mirrored():
     u1 = down + [dict(down[-1], date="x1", close=down[-1]["close"] * 1.03, high=down[-1]["close"] * 1.04)]
     u2 = u1 + [dict(u1[-1], date="x2", close=u1[-1]["close"] * 1.03, high=u1[-1]["close"] * 1.04)]
     e2 = doors.exit_state(u2, side="short")
-    assert e2["door_4ema"] == "day2_warn" and e2["warning_4ema"]
-    assert e2["door_21ema"] in ("none", "warn") and not e2["mandatory_exit"]
+    assert e2["door_4ema"] == "day2" and e2["warning_4ema"]
+    assert e2["door_21ema"] in ("none", "day1") and not e2["mandatory_exit"]
     # a violent squeeze = deep break for the short
     sq = u2 + [dict(u2[-1], date="x3", close=u2[-1]["close"] * 1.10, high=u2[-1]["close"] * 1.11)]
     assert doors.exit_state(sq, side="short")["deep_break_4ema"]
@@ -103,7 +103,7 @@ def test_mandatory_is_21ema_not_4ema():
     e2 = doors.exit_state(d2)
     # 4 EMA day 2 is a warning, not the exit (Ray ruling 2026-09-08). No field in the payload
     # may claim otherwise -- a self-contradicting payload gets half-believed downstream.
-    assert e2["door_4ema"] == "day2_warn" and e2["warning_4ema"]
+    assert e2["door_4ema"] == "day2" and e2["warning_4ema"]
     assert not e2["mandatory_exit"] and e2["mandatory_reason"] is None
     assert not any(k.startswith("mandatory_exit_under_") for k in e2)
     assert not any("below" in k for k in e2)  # "closes_below_*" lied for shorts; it is gone
@@ -139,3 +139,65 @@ def test_side_is_never_guessed(tmp_path):
     # DNN has no side anywhere -- refuse, do not guess, and make it loud
     assert out["DNN"]["verdict"] == "SIDE UNKNOWN" and "stop_from_current" not in out["DNN"]
     assert cli.position_monitor(str(d), "2026-09-08")["push"] is True
+
+
+def _relaunch_bars(up_days=0):
+    """~50% off the high, then a 4 EMA reclaim that is still under the 21 EMA."""
+    closes = [100 * (0.985 ** i) for i in range(45)]
+    closes += [closes[-1] * 1.05, closes[-1] * 1.05 * 1.03]
+    for _ in range(up_days):
+        closes.append(closes[-1] * 1.05)
+    return [{"date": f"d{i:03d}", "open": c, "high": c * 1.01, "low": c * 0.99, "close": c, "volume": 1}
+            for i, c in enumerate(closes)]
+
+
+def test_relaunch_entry_is_not_born_in_a_mandatory_exit():
+    """The bug Ray caught: a name entered UNDER the 21 EMA cannot be exited on the 21 EMA door.
+
+    Before the entry-bound door this staged with door_open=True and, on the same bar, reported
+    closes_against_21ema=27 and mandatory_exit=True.
+    """
+    bars = _relaunch_bars()
+    e = doors.entry_state(bars)
+    assert e["door_open"] and e["price"] < e["ema21"]      # a valid entry, below the 21 EMA
+    assert e["entry_door"] == "4ema"                        # so it binds to the tight door
+
+    x = doors.exit_state(bars, entry_door_=e["entry_door"], entry_date=bars[-1]["date"])
+    assert x["closes_against_21ema"] >= 2                   # the 21 EMA door WOULD have fired
+    assert x["active_door"] == "4ema" and not x["graduated"]
+    assert not x["mandatory_exit"]                          # and it does not, because it is not the door
+
+    # the same bars read as a 21 EMA entry still exit -- the ruling is untouched for normal entries
+    assert doors.exit_state(bars, entry_door_="21ema")["mandatory_exit"]
+
+
+def test_graduation_loosens_the_leash_once_over_the_21ema():
+    entry_date = _relaunch_bars()[-1]["date"]
+    bars = _relaunch_bars(up_days=14)                       # keeps running, clears the 21 EMA
+    x = doors.exit_state(bars, entry_door_="4ema", entry_date=entry_date)
+    assert x["graduated"] and x["active_door"] == "21ema"
+
+
+def test_graduation_needs_an_entry_date_and_errs_tight():
+    """No entry_date means graduation cannot be established, so the tight door stands."""
+    bars = _relaunch_bars(up_days=14)
+    x = doors.exit_state(bars, entry_door_="4ema", entry_date=None)
+    assert not x["graduated"] and x["active_door"] == "4ema"
+
+
+def test_four_ema_door_mandates_when_it_is_the_active_door():
+    """Under the 4 EMA door, two closes against the 4 EMA IS the exit -- unlike a 21 EMA entry."""
+    bars = _relaunch_bars()
+    d1 = bars + [dict(bars[-1], date="e1", close=bars[-1]["close"] * 0.96)]
+    d2 = d1 + [dict(d1[-1], date="e2", close=d1[-1]["close"] * 0.99)]
+    x = doors.exit_state(d2, entry_door_="4ema", entry_date=bars[-1]["date"])
+    assert x["closes_against_4ema"] >= 2 and x["active_door"] == "4ema"
+    assert x["mandatory_exit"] and "4 EMA" in x["mandatory_reason"]
+
+
+def test_entry_door_mirrors_for_shorts():
+    """A short is proven when it is BELOW the 21 EMA, so the sides flip."""
+    assert doors.entry_door(90.0, 100.0, side="long") == "4ema"    # long under the 21 = unproven
+    assert doors.entry_door(110.0, 100.0, side="long") == "21ema"
+    assert doors.entry_door(90.0, 100.0, side="short") == "21ema"  # short under the 21 = proven
+    assert doors.entry_door(110.0, 100.0, side="short") == "4ema"

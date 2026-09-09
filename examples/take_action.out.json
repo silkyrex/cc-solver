@@ -62,6 +62,7 @@
    "stop_pct": 0.08,
    "stop_price": 90.6832,
    "door_open": true,
+   "entry_door": "21ema",
    "reason": "fresh 4 EMA reclaim (day 1) + slow sto 20 low (dipped <20, first close back above)",
    "pace_rvol": 1.21,
    "verdict": "STAGE",
@@ -91,7 +92,15 @@
      "loss_at_stop": 370.62
     }
    },
-   "callout": "BE: fresh 4 EMA reclaim (day 1) + slow sto 20 low (dipped <20, first close back above) \u2014 staged at 15% floor, say PASS to cancel"
+   "callout": "BE: fresh 4 EMA reclaim (day 1) + slow sto 20 low (dipped <20, first close back above) \u2014 staged at 15% floor, say PASS to cancel",
+   "held_row": {
+    "ticker": "BE",
+    "entry": 98.5687,
+    "initial_stop": 90.6832,
+    "side": "long",
+    "entry_door": "21ema",
+    "entry_date": "2026-09-08"
+   }
   },
   {
    "ticker": "SMR",
@@ -113,6 +122,7 @@
    "stop_pct": 0.08,
    "stop_price": 82.9664,
    "door_open": true,
+   "entry_door": "4ema",
    "reason": "fresh 4 EMA reclaim (day 1) + slow sto 20 low (dipped <20, first close back above)",
    "pace_rvol": 2.01,
    "verdict": "STAGE",
@@ -142,7 +152,15 @@
      "loss_at_stop": 375.15
     }
    },
-   "callout": "SMR: fresh 4 EMA reclaim (day 1) + slow sto 20 low (dipped <20, first close back above) \u2014 staged at 15% floor, say PASS to cancel"
+   "callout": "SMR: fresh 4 EMA reclaim (day 1) + slow sto 20 low (dipped <20, first close back above) \u2014 staged at 15% floor, say PASS to cancel [exit door: 4 EMA until it clears the 21]",
+   "held_row": {
+    "ticker": "SMR",
+    "entry": 90.1809,
+    "initial_stop": 82.9664,
+    "side": "long",
+    "entry_door": "4ema",
+    "entry_date": "2026-09-08"
+   }
   },
   {
    "ticker": "DNN",
@@ -164,6 +182,7 @@
    "stop_pct": 0.08,
    "stop_price": 111.0109,
    "door_open": false,
+   "entry_door": "21ema",
    "reason": "below 4 EMA; no entry",
    "pace_rvol": null,
    "verdict": "HELD"
@@ -188,6 +207,7 @@
    "stop_pct": 0.08,
    "stop_price": 92.0,
    "door_open": false,
+   "entry_door": "4ema",
    "reason": "below 4 EMA; no entry",
    "pace_rvol": null,
    "verdict": "HELD"
@@ -212,6 +232,7 @@
    "stop_pct": 0.08,
    "stop_price": 98.6074,
    "door_open": false,
+   "entry_door": "21ema",
    "reason": "above 4 EMA but stale (day 3+); no entry",
    "pace_rvol": 1.34,
    "verdict": "WATCH"
@@ -236,6 +257,7 @@
    "stop_pct": 0.08,
    "stop_price": 98.6365,
    "door_open": false,
+   "entry_door": "21ema",
    "reason": "above 4 EMA but stale (day 3+); no entry",
    "pace_rvol": 0.67,
    "verdict": "WATCH"
@@ -260,6 +282,7 @@
    "stop_pct": 0.08,
    "stop_price": 84.0093,
    "door_open": false,
+   "entry_door": "4ema",
    "reason": "below 4 EMA; no entry",
    "pace_rvol": 0.94,
    "verdict": "PASS"
