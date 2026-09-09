@@ -35,3 +35,20 @@ def test_discovery_missing_banner():
     m = ledger.discovery_missing(rows)
     assert m["missing"] == ["Fast discovery"] and "DISCOVERY MISSING" in m["banner"]
     assert ledger.discovery_missing(rows + [{"Task": "Fast discovery", "Outcome": "Partial"}])["banner"] is None
+
+
+def test_pt_time_accepts_the_12_hour_clock_the_tasks_actually_write():
+    """Ray's scheduled tasks write pt_time on a 12-hour clock ("11:50 AM").
+
+    Before this, that raised ValueError inside take_action and the whole task failed with no
+    verdicts. The repo is the contract for those tasks, so the repo has to accept what they send.
+    """
+    assert rvol.minutes_since_open("11:50") == 320
+    assert rvol.minutes_since_open("11:50 AM") == 320
+    assert rvol.minutes_since_open("11:50 am") == 320
+    assert rvol.minutes_since_open("1:10 PM") == 400          # 13:10
+    assert rvol.minutes_since_open("13:10") == 400            # same slot, 24-hour
+    assert rvol.minutes_since_open("12:05 PM") == 335         # noon is 12, not 24
+    assert rvol.minutes_since_open("12:05 AM") == -385        # midnight is 0, so this is pre-open
+    assert rvol.pace_rvol(1e6, 1e6, rvol.minutes_since_open("12:05 AM")) is None  # pre-open = no pace
+    assert rvol.minutes_since_open("6:30 AM") == 0            # the open itself

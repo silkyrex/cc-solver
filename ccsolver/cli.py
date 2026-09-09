@@ -8,7 +8,8 @@ Input files the harness writes (all optional unless noted):
   thematic.json   {"Theme": ["T1","T2"]}
   roster.json     ["SNDK", ...]
   positions.json  IBKR get_account_positions JSON (whole object)          (take_action, position_monitor, eod)
-  account.json    {"net_liq": 18910.0, "pt_time": "11:50"}               (take_action, position_monitor)
+  account.json    {"net_liq": 18910.0, "pt_time": "11:50 AM"}            (take_action, position_monitor)
+                  pt_time takes a 12-hour ("11:50 AM", "1:10 PM") or 24-hour ("13:10") clock
   exclusion.json  {"names": [...], "patterns": [...]}
   run_log_today.json  [ {Task, Outcome} ... ]                            (take_action)
   board.json      [ {url, Ticker, Layer, first_seen, seen_count} ... ]   (take_action, eow, miss_audit)
