@@ -109,27 +109,53 @@ def _entry_reason(reclaim_day, sto_trigger, new_high):
     return " + ".join(parts)
 
 
-def exit_state(bars, last_price=None, settled_only=True):
-    """Both exit doors flagged. Position monitor runs on SETTLED closes (settled_only=True)."""
+def exit_state(bars, last_price=None, settled_only=True, side="long"):
+    """Exit doors for a LONG or a SHORT. Position monitor runs on SETTLED closes (settled_only=True).
+
+    Ray ruled 2026-09-08 (direct ruling, not a backtest result): the 21 EMA second consecutive close
+    is the MANDATORY exit; the 4 EMA door is a WARNING only. A deep break (>4% through the 4 EMA) is
+    also mandatory. Both doors stay in the payload so the harness can colour them.
+
+    side="short" mirrors every test: a short is in trouble when price closes ABOVE the EMAs.
+    """
+    short = str(side).lower().startswith("s")
     b = bars if settled_only else _with_live(bars, last_price)
     closes = [x["close"] for x in b]
     e4, e21 = ema(closes, 4), ema(closes, 21)
-    below4 = _streak(closes, e4, above=False)
-    below21 = _streak(closes, e21, above=False) if e21[-1] else 0
+    # "against" = the adverse side for this position: below the EMA for a long, above it for a short
+    against4 = _streak(closes, e4, above=short)
+    against21 = _streak(closes, e21, above=short) if e21[-1] is not None else 0
     price = closes[-1]
-    deep = e4[-1] is not None and price < e4[-1] * (1 - DEEP_BREAK_PCT)
-    door4 = {0: "none", 1: "day1_discretion"}.get(below4, "day2_mandatory")
-    door21 = {0: "none", 1: "warn"}.get(below21, "mandatory_2nd_close")
+    if e4[-1] is None:
+        deep = False
+    elif short:
+        deep = price > e4[-1] * (1 + DEEP_BREAK_PCT)
+    else:
+        deep = price < e4[-1] * (1 - DEEP_BREAK_PCT)
+    # 4 EMA door names say "warn" because that is now what they are. A field called
+    # mandatory_exit_under_4ema_door sitting next to mandatory_exit=false is a payload that
+    # contradicts itself, and something downstream eventually believes the wrong half.
+    door4 = {0: "none", 1: "day1_warn"}.get(against4, "day2_warn")
+    door21 = {0: "none", 1: "warn"}.get(against21, "mandatory_2nd_close")
+    mandatory = door21 == "mandatory_2nd_close" or deep
     return {
+        "side": "short" if short else "long",
         "close": round(price, 4),
-        "closes_below_4ema": below4,
-        "closes_below_21ema": below21,
+        # named "against", never "below": for a short these count closes ABOVE the EMA
+        "closes_against_4ema": against4,
+        "closes_against_21ema": against21,
         "door_4ema": door4,
         "door_21ema": door21,
         "deep_break_4ema": deep,
-        "mandatory_exit_under_4ema_door": door4 == "day2_mandatory",
-        "mandatory_exit_under_21ema_door": door21 == "mandatory_2nd_close",
-        "note": "exit door UNRESOLVED (Sep 8 2026): both doors reported; Ray rules until the backtest settles it",
+        "warning_4ema": against4 >= 1,
+        "mandatory_exit": mandatory,
+        "mandatory_reason": (
+            "21 EMA 2nd consecutive close against the position" if door21 == "mandatory_2nd_close"
+            else f"deep break: close more than {DEEP_BREAK_PCT:.0%} through the 4 EMA" if deep
+            else None
+        ),
+        "note": "ruled 2026-09-08 (Ray, direct): 21 EMA 2nd consecutive close = MANDATORY exit; 4 EMA = warning only"
+                + (" (short: mirrored, closes ABOVE the EMAs count against)" if short else ""),
     }
 
 
@@ -148,7 +174,19 @@ def size(net_liq, price, stop_pct, tier="floor"):
     }
 
 
-def breakeven_1r(entry, initial_stop, current):
-    """True once the position is +1R: current >= entry + (entry - initial_stop). Stop then moves to entry."""
+def breakeven_1r(entry, initial_stop, current, side="long"):
+    """True once the position is +1R. Long: current >= entry + (entry - initial_stop).
+    Short: current <= entry - (initial_stop - entry). Stop then moves to entry."""
+    if str(side).lower().startswith("s"):
+        r = initial_stop - entry
+        return r > 0 and current <= entry - r
     r = entry - initial_stop
     return r > 0 and current >= entry + r
+
+
+def stop_from_current(bars, side="long"):
+    """max(8%, 2*ATR14) away from the last close, on the adverse side for this position."""
+    cur = bars[-1]["close"]
+    a = atr(bars, 14)[-1] or 0
+    pct = max(STOP_FLOOR_PCT, ATR_MULT * a / cur)
+    return round(cur * (1 + pct), 4) if str(side).lower().startswith("s") else round(cur * (1 - pct), 4)
