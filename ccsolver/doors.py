@@ -92,6 +92,7 @@ def entry_state(bars, last_price=None, day_high=None, day_low=None):
         "stop_pct": round(stop_pct, 4),
         "stop_price": round(price * (1 - stop_pct), 4),
         "door_open": reclaim_day in (1, 2) or sto_trigger,
+        "entry_door": entry_door(price, e21[-1], side="long"),
         "reason": _entry_reason(reclaim_day, sto_trigger, new_high),
     }
 
@@ -109,12 +110,43 @@ def _entry_reason(reclaim_day, sto_trigger, new_high):
     return " + ".join(parts)
 
 
-def exit_state(bars, last_price=None, settled_only=True, side="long"):
-    """Exit doors for a LONG or a SHORT. Position monitor runs on SETTLED closes (settled_only=True).
+def _favourable(price, ema_val, short):
+    """Is price on the side of this EMA that a position of this side WANTS to be on?"""
+    if ema_val is None:
+        return None
+    return price < ema_val if short else price > ema_val
+
+
+def entry_door(price, ema21_val, side="long"):
+    """Which EMA is this position's mandatory exit, decided at ENTRY.
+
+    Ray ruled 2026-09-08 that the 21 EMA second consecutive close is the mandatory exit. That rule
+    is incoherent for a position opened on the WRONG side of the 21 EMA: a relaunch entry (>30% off
+    the high, fresh 4 EMA reclaim) is under the 21 EMA by construction, so it would be born dozens
+    of closes deep into its own mandatory exit. Verified 2026-09-08: such an entry reported
+    closes_against_21ema=27 and mandatory_exit=True on the staging bar itself.
+
+    So the door binds at entry. Above the 21 EMA (below it, for a short) the 21 EMA is the exit.
+    Otherwise the position is unproven and runs on the tighter 4 EMA door until it GRADUATES.
+    """
+    short = str(side).lower().startswith("s")
+    fav = _favourable(price, ema21_val, short)
+    return "21ema" if fav else "4ema"
+
+
+def exit_state(bars, last_price=None, settled_only=True, side="long", entry_door_="21ema", entry_date=None):
+    """Exit doors for a LONG or a SHORT, against the door this position bound to at entry.
 
     Ray ruled 2026-09-08 (direct ruling, not a backtest result): the 21 EMA second consecutive close
-    is the MANDATORY exit; the 4 EMA door is a WARNING only. A deep break (>4% through the 4 EMA) is
-    also mandatory. Both doors stay in the payload so the harness can colour them.
+    is the MANDATORY exit and the 4 EMA door is a warning. Ray ruled 2026-09-08 (second ruling) that
+    a position opened on the wrong side of the 21 EMA runs on the 4 EMA door instead, and GRADUATES
+    to the 21 EMA door on its first close on the favourable side of the 21 EMA since entry. The leash
+    only ever loosens; a graduated position is never demoted back to the tight door.
+
+    A deep break (>4% through the 4 EMA, adverse direction) is mandatory under either door.
+
+    entry_date is what makes graduation checkable. Without it graduation cannot be established, and
+    the position stays on the TIGHT door -- erring toward the earlier exit, never the later one.
 
     side="short" mirrors every test: a short is in trouble when price closes ABOVE the EMAs.
     """
@@ -132,12 +164,29 @@ def exit_state(bars, last_price=None, settled_only=True, side="long"):
         deep = price > e4[-1] * (1 + DEEP_BREAK_PCT)
     else:
         deep = price < e4[-1] * (1 - DEEP_BREAK_PCT)
-    # 4 EMA door names say "warn" because that is now what they are. A field called
-    # mandatory_exit_under_4ema_door sitting next to mandatory_exit=false is a payload that
-    # contradicts itself, and something downstream eventually believes the wrong half.
-    door4 = {0: "none", 1: "day1_warn"}.get(against4, "day2_warn")
-    door21 = {0: "none", 1: "warn"}.get(against21, "mandatory_2nd_close")
-    mandatory = door21 == "mandatory_2nd_close" or deep
+
+    bound = "4ema" if str(entry_door_) == "4ema" else "21ema"
+    graduated = False
+    if bound == "4ema" and entry_date is not None:
+        for i, bar in enumerate(b):
+            if bar.get("date") is not None and str(bar["date"]) >= str(entry_date):
+                if _favourable(closes[i], e21[i], short):
+                    graduated = True
+                    break
+    active = "21ema" if (bound == "21ema" or graduated) else "4ema"
+
+    against_active = against21 if active == "21ema" else against4
+    mandatory = deep or against_active >= 2
+    if deep:
+        reason = f"deep break: close more than {DEEP_BREAK_PCT:.0%} through the 4 EMA"
+    elif mandatory:
+        reason = f"{'21' if active == '21ema' else '4'} EMA 2nd consecutive close against the position"
+    else:
+        reason = None
+    # door strings are neutral counts on purpose. Whether "day2" means exit depends on active_door,
+    # so a name like day2_mandatory or day2_warn would be wrong half the time.
+    door4 = {0: "none", 1: "day1"}.get(against4, "day2")
+    door21 = {0: "none", 1: "day1"}.get(against21, "day2")
     return {
         "side": "short" if short else "long",
         "close": round(price, 4),
@@ -146,15 +195,16 @@ def exit_state(bars, last_price=None, settled_only=True, side="long"):
         "closes_against_21ema": against21,
         "door_4ema": door4,
         "door_21ema": door21,
+        "entry_door": bound,
+        "graduated": graduated,
+        "active_door": active,
         "deep_break_4ema": deep,
         "warning_4ema": against4 >= 1,
         "mandatory_exit": mandatory,
-        "mandatory_reason": (
-            "21 EMA 2nd consecutive close against the position" if door21 == "mandatory_2nd_close"
-            else f"deep break: close more than {DEEP_BREAK_PCT:.0%} through the 4 EMA" if deep
-            else None
-        ),
-        "note": "ruled 2026-09-08 (Ray, direct): 21 EMA 2nd consecutive close = MANDATORY exit; 4 EMA = warning only"
+        "mandatory_reason": reason,
+        "note": f"active door = {active} (bound at entry: {bound}"
+                + (", graduated" if graduated else "")
+                + "); deep break is mandatory under either"
                 + (" (short: mirrored, closes ABOVE the EMAs count against)" if short else ""),
     }
 

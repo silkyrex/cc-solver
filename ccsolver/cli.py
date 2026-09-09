@@ -13,7 +13,8 @@ Input files the harness writes (all optional unless noted):
   run_log_today.json  [ {Task, Outcome} ... ]                            (take_action)
   board.json      [ {url, Ticker, Layer, first_seen, seen_count} ... ]   (take_action, eow, miss_audit)
   staged.json     [ {ticker, price, stop} ... ]                           (confirm_pass)
-  held.json       [ {ticker, entry, initial_stop, side} ... ]            (position_monitor)
+  held.json       [ {ticker, entry, initial_stop, side, entry_door, entry_date} ... ]  (position_monitor)
+                  entry_door/entry_date come from the staged verdict's held_row block
 """
 import argparse
 import json
@@ -77,7 +78,10 @@ def take_action(d, date):
         if es["door_open"] and t not in held:
             v["verdict"] = "STAGE"
             v["sizes"] = {k: doors.size(net_liq, es["price"], es["stop_pct"], k) for k in doors.SIZE_TIERS} if net_liq else None
-            v["callout"] = f"{t}: {es['reason']} — staged at 15% floor, say PASS to cancel"
+            v["callout"] = (f"{t}: {es['reason']} — staged at 15% floor, say PASS to cancel"
+                            + (" [exit door: 4 EMA until it clears the 21]" if es.get("entry_door") == "4ema" else ""))
+            v["held_row"] = {"ticker": t, "entry": es["price"], "initial_stop": es["stop_price"],
+                             "side": "long", "entry_door": es.get("entry_door"), "entry_date": date}
         elif t in held:
             v["verdict"] = "HELD"
         else:
@@ -153,7 +157,11 @@ def position_monitor(d, date):
                         "reason": "no side on the held.json row and no signed STK position for this ticker; "
                                   "refusing to guess, because the wrong side puts the stop on the wrong side of price"})
             continue
-        ex = doors.exit_state(b, settled_only=True, side=side)
+        # entry_door / entry_date come off the held.json row, written when the name was staged.
+        # Missing entry_door defaults to the tight 4 EMA door for a position that cannot prove it
+        # was ever above the 21 EMA; missing entry_date simply blocks graduation. Both err early.
+        ex = doors.exit_state(b, settled_only=True, side=side,
+                              entry_door_=h.get("entry_door", "21ema"), entry_date=h.get("entry_date"))
         cur = b[-1]["close"]
         out.append({"ticker": t, **ex,
                     "breakeven_1r_reached": doors.breakeven_1r(h["entry"], h["initial_stop"], cur, side=side),

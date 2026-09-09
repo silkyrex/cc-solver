@@ -3,12 +3,16 @@
   "ticker": "DNN",
   "entry": 100.0,
   "initial_stop": 92.0,
-  "side": "long"
+  "side": "long",
+  "entry_door": "21ema",
+  "entry_date": "2026-08-20"
  },
  {
   "ticker": "TJX",
   "entry": 100.0,
   "initial_stop": 108.0,
-  "side": "short"
+  "side": "short",
+  "entry_door": "21ema",
+  "entry_date": "2026-08-20"
  }
 ]
