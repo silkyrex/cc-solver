@@ -141,7 +141,7 @@ def entry_door(price, ema21_val, side="long"):
     return "21ema" if fav else "4ema"
 
 
-def exit_state(bars, last_price=None, settled_only=True, side="long", entry_door_="21ema", entry_date=None):
+def exit_state(bars, *, entry_door_, last_price=None, settled_only=True, side="long", entry_date=None):
     """Exit doors for a LONG or a SHORT, against the door this position bound to at entry.
 
     Ray ruled 2026-09-08 (direct ruling, not a backtest result): the 21 EMA second consecutive close
@@ -151,6 +151,12 @@ def exit_state(bars, last_price=None, settled_only=True, side="long", entry_door
     only ever loosens; a graduated position is never demoted back to the tight door.
 
     A deep break (>4% through the 4 EMA, adverse direction) is mandatory under either door.
+
+    entry_door_ is REQUIRED and keyword-only. There is deliberately no default: whichever door a
+    default picked would be silently wrong for half the positions, and the wrong one is unnoticeable
+    from the outside. A caller that does not know the door must decide, in the open, what a missing
+    door means -- position_monitor treats it as the tight 4 EMA door, because a position that cannot
+    prove it cleared the 21 EMA has not earned the loose leash.
 
     entry_date is what makes graduation checkable. Without it graduation cannot be established, and
     the position stays on the TIGHT door -- erring toward the earlier exit, never the later one.
