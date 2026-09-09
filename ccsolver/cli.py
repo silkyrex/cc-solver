@@ -106,9 +106,37 @@ def confirm_pass(d, date):
     return {"task": "confirm_pass", "date": date, "checked": len(staged), "flips": flips, "push": bool(flips)}
 
 
+def _position_sides(pos_json):
+    """{ticker: "long"|"short"} from the signed IBKR STK line.
+
+    Keyed on the symbol, not the whole contract_description, so a description that carries more than
+    a bare ticker still resolves. Zero-quantity lines are skipped: an unsigned number is not a side.
+    """
+    out = {}
+    for p in pos_json.get("positions", []) or []:
+        if p.get("asset_class") != "STK":
+            continue
+        desc = (p.get("contract_description") or p.get("symbol") or "").split()
+        if not desc:
+            continue
+        for key in ("position", "quantity", "market_value"):
+            v = p.get(key)
+            if v is None:
+                continue
+            try:
+                f = float(v)
+            except (TypeError, ValueError):
+                continue
+            if f != 0:
+                out[desc[0]] = "short" if f < 0 else "long"
+                break
+    return out
+
+
 def position_monitor(d, date):
     held, bars, acct = _load(d, "held.json", []), _load(d, "bars.json", {}), _load(d, "account.json", {})
     pos_json = _load(d, "positions.json", {"positions": []})
+    sides = _position_sides(pos_json)
     out = []
     for h in held:
         t = h["ticker"]
@@ -116,14 +144,26 @@ def position_monitor(d, date):
         if not b:
             out.append({"ticker": t, "verdict": "NO DATA"})
             continue
-        ex = doors.exit_state(b, settled_only=True)
+        # side: held.json wins, then the sign of the IBKR position. Never a default.
+        # Guessing long on a short inverts the stop to the profitable side and leaves the
+        # direction that actually hurts completely unprotected.
+        side = h.get("side") or sides.get(t)
+        if side is None:
+            out.append({"ticker": t, "verdict": "SIDE UNKNOWN",
+                        "reason": "no side on the held.json row and no signed STK position for this ticker; "
+                                  "refusing to guess, because the wrong side puts the stop on the wrong side of price"})
+            continue
+        ex = doors.exit_state(b, settled_only=True, side=side)
         cur = b[-1]["close"]
-        out.append({"ticker": t, **ex, "breakeven_1r_reached": doors.breakeven_1r(h["entry"], h["initial_stop"], cur),
-                    "stop_from_current": round(cur * (1 - max(doors.STOP_FLOOR_PCT, doors.ATR_MULT * (doors.atr(b, 14)[-1] or 0) / cur)), 4)})
+        out.append({"ticker": t, **ex,
+                    "breakeven_1r_reached": doors.breakeven_1r(h["entry"], h["initial_stop"], cur, side=side),
+                    "stop_from_current": doors.stop_from_current(b, side=side)})
     net_liq = float(acct.get("net_liq", 0) or 0)
     return {"task": "position_monitor", "date": date, "positions": out,
             "exposure": exposure.exposure(pos_json.get("positions", []), net_liq) if net_liq else None,
-            "push": any(p.get("mandatory_exit_under_4ema_door") or p.get("mandatory_exit_under_21ema_door") for p in out)}
+            # push budget: the 21 EMA door (or a deep break) is the mandatory exit; the 4 EMA door is a
+            # warning. An unresolvable side is also worth a push -- it means a position is unmonitored.
+            "push": any(p.get("mandatory_exit") or p.get("verdict") == "SIDE UNKNOWN" for p in out)}
 
 
 def _held(d):

@@ -76,11 +76,18 @@ All five were ruled by Ray on 2026-09-08. **Every ruling went to `main`, which a
 
 build-2 lost all five. Combined with the ten defects above, nothing in that branch survives except the two ports listed under "What build-2 does better".
 
+## Exit door ruled 2026-09-08 (after this review was written)
+
+Ray ruled directly: **21 EMA second consecutive close = mandatory exit; 4 EMA = warning only** (deep break also mandatory). This was a direct ruling, **not** a backtest result — no harness and no bar corpus exist. A patch landing this rule cited a "Build 4 backtest" that does not exist in any branch; the attribution is corrected in `doors.exit_state`.
+
+Consequence for the porting plan: **the backtest is no longer on the critical path.** It was queued to settle this one question. It now only gates the next rule questions (stop 5 vs 8, day-3 staleness, insurance thresholds), which are not blocking anything today.
+
 ## Recommended sequence
 
 1. ~~Rule conflict #1~~ — done 2026-09-08.
 2. ~~Fix the exclusion matcher on `main`~~ — done, commit 5856920.
 3. ~~Rule conflicts #2–#5~~ — done 2026-09-08, all to `main`, no code change.
 4. Verify the live Notion Exclusion List patterns still fire under the two-token rule.
-5. Port `backtest/harness.py` and `persistence.py` into `ccsolver/`.
-6. Retire `grok/build-2` once #5 lands.
+5. ~~Port `backtest/harness.py`~~ — deprioritised: it was queued to settle the exit door, which is now ruled. build-2's file is a per-day state dumper, not a backtest (no position simulation, no policy comparison, no aggregation, output truncated to 50 rows), so when a backtest is next needed it is a build against `main`'s API, not a port.
+6. Port `persistence.py` (SHA-256 manifests) into `ccsolver/`.
+7. Retire `grok/build-2` once #6 lands.

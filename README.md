@@ -18,7 +18,7 @@ harness: MCP calls → inputs/*.json → python -m ccsolver.cli <task> --inputs 
 | `calendar.py` | closed / early_close / normal; MOC deadline; chain times (intraday chain shifts −3h on early close, premarket slots stay) | fetch the calendar (harness exports the Notion page) |
 | `universe.py` | union scans + thematic + roster + positions; tag sources and theme; apply the Exclusion List (fund-name patterns, sub-$10 pumps on >20x volume, named list); tandem clusters (3+ names) | treat a Robinhood scan as a universe (399-row cap); exclude a name on a leverage word alone, or exclude anything held or rostered |
 | `rvol.py` | pace-adjusted relative volume against a U-shaped intraday curve | use raw dayVolume/avgVolume as buzz (reads 0.5–0.7 at 11:15) |
-| `doors.py` | entry state (4 EMA reclaim day 1/2/3+, slow sto 20 low, new 52w high), BOTH exit doors (4 EMA day1/day2, 21 EMA warn/mandatory), deep break, stop = max(8%, 2×ATR14) from current price, size tiers 15/20/25%, breakeven at +1R | authorize an entry; the LLM stages, Ray decides |
+| `doors.py` | entry state (4 EMA reclaim day 1/2/3+, slow sto 20 low, new 52w high), both exit doors (21 EMA 2nd close = mandatory, 4 EMA = warning), deep break, stop = max(8%, 2×ATR14) from current price on the adverse side, size tiers 15/20/25%, breakeven at +1R — all side-aware (long or short) | authorize an entry; the LLM stages, Ray decides; guess a side |
 | `exposure.py` | gross/net ex-SPY vs 150/130, verbatim math from the trigger prompts | change the caps |
 | `ledger.py` | Run Log / Trader Handoff / Discovery Board payload dicts; `discovery_missing` failure banner; 63-session window | write to Notion |
 | `grader.py` | forward returns at +5/10/20/30d, hit rate by layer, Miss Audit at 10/15/20/30%+ over 20 sessions | edit a rule |
@@ -42,7 +42,8 @@ See the docstring at the top of `ccsolver/cli.py`. Bars are settled daily bars f
 
 - Long entry: fresh 4 EMA reclaim day 1 or valid day 2 only; day 3+ = stale. Slow sto k(14) d(1) dip <20 then first close back above the 4 EMA = second door. New 52w high = priority tag, not a door.
 - Price basis = last price at run time (MOC decision happens before the close). MOC deadline 12:45 PT, 09:45 on early-close days.
-- Exit door UNRESOLVED: both the 4 EMA door (day-1 discretion, day-2 mandatory) and the 21 EMA door (2nd consecutive close) are reported. Ray rules until the backtest settles it.
+- Exit door RULED (Ray, 2026-09-08, direct ruling and not a backtest result): the **21 EMA second consecutive close is the mandatory exit**; the 4 EMA door is a **warning only**. A deep break (>4% through the 4 EMA) is also mandatory. Both doors stay in the payload; only `mandatory_exit` drives the push budget.
+- Every exit test is side-aware. A short is in trouble when price closes **above** the EMAs, its stop sits **above** the current price, and +1R is a move **down**. Side comes from `held.json`, else the sign of the IBKR position; if neither resolves, the row returns `SIDE UNKNOWN` and pushes rather than defaulting to long — a guessed side puts the stop on the profitable side of price and leaves the real risk unprotected.
 - Sizing 15% floor / 20% / 25%; the decision is which size, never whether. Stop max(8%, 2×ATR14) from CURRENT price; breakeven at +1R.
 - Exposure 150/130 ex-SPY; breach = banner, still stage at the floor with "say PASS to cancel".
 - Take-action inputs = roster ∪ Discovery Board (63 sessions) ∪ open positions ∪ today's non-excluded scan hits (Ray ruled Sep 8: same-day hits may stage). Shorts alert-only.
@@ -54,5 +55,5 @@ See the docstring at the top of `ccsolver/cli.py`. Bars are settled daily bars f
 1. Provisional bar takes `day_high`/`day_low` from quotes.json (Ray, Sep 8). If the harness omits them, high = low = last price and slow sto reads slightly low on strong up days.
 2. `window_start` approximates 63 sessions as 91 calendar days.
 3. `grader.miss_audit` classifies nothing; it lists. The LLM classifies, Ray rules.
-4. No backtest harness yet beyond `doors.exit_state` over any bar list; Build 4 wraps it.
+4. No backtest harness, and no bar corpus to run one on. The exit door no longer waits on it (ruled 2026-09-08), so this now only gates the *next* rule questions: stop 5 vs 8, the day-3 staleness cutoff, insurance thresholds.
 5. Structure layer (HH/HL pivots) not implemented; the spec deferred it to the slow-discovery LLM task.
