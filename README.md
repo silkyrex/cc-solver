@@ -1,5 +1,10 @@
 # cc-solver
 
+> **RETIRED 2026-10-11.** Scan Fleet v2 was abandoned and nothing replaces this solver. The 11
+> Fleet v2 scheduled tasks that called it are disabled, not deleted, so their prompts survive as
+> history. The repo is archived read-only. Do not wire new work to it. `docs/FLEET.md` records how
+> the fleet called this code.
+
 Deterministic rules-as-code for Ray's Consistency Capital desk. Repo: https://github.com/silkyrex/cc-solver Build 2 of the Scan Fleet Restructure v2 (Sep 2026).
 Written by: Claude (Fable 5.1), 2026-09-08. Spec: Notion Desk Post "2026-09-08 Claude Open Build 2 handoff — solver repo spec for Grok". Rulings: Notion plan page "Scan Fleet Restructure v2 — plan (2026-09-08)".
 
