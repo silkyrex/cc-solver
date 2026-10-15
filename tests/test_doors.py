@@ -261,3 +261,122 @@ def test_entry_trigger_names_which_door_opened():
     assert doors.entry_state(b)["entry_trigger"] in (None, "reclaim", "slow_sto", "both")
     bars = _relaunch_bars()
     assert doors.entry_state(bars)["entry_trigger"] is not None   # this one is a valid entry
+
+
+def _fallen_out_window(closes, start="2026-04-01"):
+    """A bar window that starts LONG after entry: the graduating close is no longer in it."""
+    return bars_from_closes(closes, start=start)
+
+
+def test_a_stored_graduated_date_survives_a_bar_window_that_lost_the_graduating_close():
+    """The bug: the harness pulls 130 calendar days. Hold a position longer than that and the
+    session it graduated on falls out of the window, the re-derivation scan finds nothing, and the
+    position is demoted to the tight 4 EMA door -- which the rule forbids (graduation is one-way).
+
+    The window here is entirely under the 21 EMA, so nothing in it can graduate anything. The
+    stored date is the only record that the position ever cleared the 21 EMA, six months earlier.
+    """
+    bars = _fallen_out_window([100 * (0.99 ** i) for i in range(40)])
+    entry = "2025-09-15T11:52:00-07:00"      # long before the window
+    grad = "2025-11-04"                       # the settled close it graduated on, also before it
+
+    # re-derivation alone: the scan finds no favourable close, so the position is demoted
+    derived = doors.exit_state(bars, entry_door_="4ema", entry_date=entry)
+    assert not derived["graduated"] and derived["active_door"] == "4ema"
+
+    # the stored date is believed without a scan, and the leash stays loose
+    stored = doors.exit_state(bars, entry_door_="4ema", entry_date=entry, graduated_date=grad)
+    assert stored["graduated"] and stored["active_door"] == "21ema"
+    assert stored["graduated_date"] == grad and stored["graduated_source"] == "stored"
+    assert stored["graduated_date_error"] is None
+
+
+def test_a_derived_graduation_reports_the_date_it_happened():
+    """graduated=true alone leaves the bug live for another 130 days.
+
+    The date is what EOD writes into "Graduated on"; without it there is nothing to write, the
+    next run re-derives from bars again, and the position is still one long hold away from losing
+    its graduation with the window.
+    """
+    bars = _relaunch_bars(up_days=14)
+    entry = _relaunch_bars()[-1]["date"]
+    x = doors.exit_state(bars, entry_door_="4ema", entry_date=entry)
+    assert x["graduated"] and x["graduated_source"] == "derived"
+    # the reported date is a real settled bar, at or after entry, and it is the FIRST favourable one
+    dates = [b["date"] for b in bars]
+    assert x["graduated_date"] in dates and x["graduated_date"] >= entry
+    e21 = doors.ema([b["close"] for b in bars], 21)
+    i = dates.index(x["graduated_date"])
+    assert bars[i]["close"] > e21[i]
+    assert not any(bars[j]["close"] > (e21[j] or float("inf"))
+                   for j in range(dates.index(entry), i))
+
+
+def test_a_graduated_position_is_never_demoted():
+    """Graduation is one-way. Nothing that happens after it -- a fall back under the 21 EMA, or a
+    bar window that no longer reaches the graduating close -- may put the position back on the
+    tight 4 EMA door."""
+    grad_bars = _relaunch_bars(up_days=14)
+    entry = _relaunch_bars()[-1]["date"]
+    grad_date = doors.exit_state(grad_bars, entry_door_="4ema", entry_date=entry)["graduated_date"]
+
+    # falls all the way back under the 21 EMA, on bars that still contain the graduating close
+    back_down = grad_bars + [dict(grad_bars[-1], date=f"z{i:03d}", close=grad_bars[-1]["close"] * (0.94 ** (i + 1)))
+                             for i in range(6)]
+    still = doors.exit_state(back_down, entry_door_="4ema", entry_date=entry, graduated_date=grad_date)
+    assert still["graduated"] and still["active_door"] == "21ema"
+    assert still["closes_against_21ema"] >= 2 and still["mandatory_exit"]   # exits on ITS door, not the tight one
+
+    # and on a window that starts after the graduation, where the scan alone would demote it
+    late = doors.exit_state(_fallen_out_window([100 * (0.99 ** i) for i in range(40)]),
+                            entry_door_="4ema", entry_date="2025-09-15", graduated_date="2025-11-04")
+    assert late["graduated"] and late["active_door"] == "21ema"
+
+
+def test_a_graduated_date_before_entry_is_refused_and_says_so():
+    """A position cannot graduate before it exists, so the stored date is wrong -- but which half
+    of the row is wrong (the date, or the entry) is not the solver's call.
+
+    So it is refused rather than trusted, graduation falls back to the bar scan (which errs tight),
+    and the row carries the reason. Silently trusting it would loosen a leash on a bad character in
+    a Notion cell; silently dropping it would hide the broken row, and position_monitor pushes on
+    the error so it gets fixed.
+    """
+    bars = _fallen_out_window([100 * (0.99 ** i) for i in range(40)])
+    x = doors.exit_state(bars, entry_door_="4ema", entry_date="2026-04-20", graduated_date="2026-01-05")
+    assert not x["graduated"] and x["active_door"] == "4ema" and x["graduated_date"] is None
+    assert "before entry" in x["graduated_date_error"]
+
+
+def test_a_graduated_date_past_the_last_settled_bar_is_refused():
+    """The same invariant as the provisional bar: only a SETTLED close may graduate a position.
+
+    A stored date naming today's live session (or the future) would do exactly what
+    provisional=True is skipped for -- let an intraday pop that fades by the close loosen the
+    leash permanently -- except through the Positions DB instead of through the bars.
+    """
+    bars = _fallen_out_window([100 * (0.99 ** i) for i in range(40)])
+    x = doors.exit_state(bars, entry_door_="4ema", entry_date="2025-09-15", graduated_date="2027-01-04")
+    assert not x["graduated"] and x["active_door"] == "4ema"
+    assert "after the last settled bar" in x["graduated_date_error"]
+
+
+def test_a_stray_graduated_date_changes_nothing_on_a_21ema_entry():
+    """Graduation is moot for a position that was never on the tight leash, so a leftover
+    "Graduated on" value must not read as an error either -- there is nothing for it to break."""
+    bars = _relaunch_bars(up_days=14)
+    x = doors.exit_state(bars, entry_door_="21ema", entry_date="2025-01-01", graduated_date="2024-01-01")
+    assert x["active_door"] == "21ema" and not x["graduated"]
+    assert x["graduated_date"] is None and x["graduated_date_error"] is None
+    plain = doors.exit_state(bars, entry_door_="21ema", entry_date="2025-01-01")
+    assert x["mandatory_exit"] == plain["mandatory_exit"] and x["note"] == plain["note"]
+
+
+def test_no_entry_date_and_no_graduated_date_leaves_the_tight_door():
+    """Nothing to derive from and nothing on record: graduation cannot be established, so the
+    tight door stands. Unchanged behaviour -- the stored date is a new way to establish it, never
+    a new way to assume it."""
+    bars = _relaunch_bars(up_days=14)
+    x = doors.exit_state(bars, entry_door_="4ema", entry_date=None, graduated_date=None)
+    assert not x["graduated"] and x["active_door"] == "4ema"
+    assert x["graduated_date"] is None and x["graduated_source"] is None
